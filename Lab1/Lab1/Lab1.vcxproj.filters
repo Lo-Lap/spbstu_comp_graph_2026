@@ -56,11 +56,11 @@
     </Image>
   </ItemGroup>
   <ItemGroup>
-    <None Include="ColorPixel.ps">
+    <CopyFileToFolders Include="ColorPixel.ps">
       <Filter>shader</Filter>
-    </None>
-    <None Include="ColorVertex.vs">
+    </CopyFileToFolders>
+    <CopyFileToFolders Include="ColorVertex.vs">
       <Filter>shader</Filter>
-    </None>
+    </CopyFileToFolders>
   </ItemGroup>
 </Project>

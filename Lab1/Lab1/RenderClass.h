@@ -3,6 +3,7 @@
 
 #include <dxgi.h>
 #include <d3d11.h>
+#include <d3d11_1.h>
 #include <DirectXMath.h>
 
 using namespace DirectX;
@@ -27,7 +28,10 @@ public:
         m_CameraPosition(0.0f, 0.0f, -5.0f), 
         m_CameraSpeed(0.1f),
         m_LRAngle(0.0f), 
-        m_UDAngle(0.0f)
+        m_UDAngle(0.0f),
+
+        m_pAnnotation(nullptr) // метки
+
     {}
 
     HRESULT Init(HWND hWnd, WCHAR szTitle[], WCHAR szWindowClass[]);
@@ -71,6 +75,9 @@ private:
     float m_CameraSpeed;
     float m_LRAngle;    //turn left/right
     float m_UDAngle;    //turn up / down
+
+    // Для меток
+    ID3DUserDefinedAnnotation* m_pAnnotation;
 
 };
 #endif

@@ -71,6 +71,12 @@ HRESULT RenderClass::Init(HWND hWnd, WCHAR szTitle[], WCHAR szWindowClass[])
         result = D3D11CreateDevice(pSelectedAdapter, D3D_DRIVER_TYPE_UNKNOWN, NULL,
             flags, levels, 1, D3D11_SDK_VERSION, &m_pDevice, &level, &m_pDeviceContext);
     }
+    
+    // Метки для рендердока
+    if (SUCCEEDED(result) && m_pDeviceContext)
+    {
+        m_pDeviceContext->QueryInterface(__uuidof(ID3DUserDefinedAnnotation), (void**)&m_pAnnotation);
+    }
 
     if (SUCCEEDED(result))
     {
@@ -120,6 +126,14 @@ void RenderClass::Terminate()
         m_pDeviceContext->ClearState();
         m_pDeviceContext->Flush();
     }
+
+    // метки для рендердока 
+    if (m_pAnnotation)
+    {
+        m_pAnnotation->Release();
+        m_pAnnotation = nullptr;
+    }
+
 
     TerminateBufferShader();
 
@@ -371,25 +385,66 @@ void RenderClass::RotateCamera(float lrAngle, float udAngle)
 
 void RenderClass::Render()
 {
-    m_pDeviceContext->OMSetRenderTargets(1, &m_pRenderTargetView, nullptr);
-    float BackColor[4] = { 0.48f, 0.57f, 0.48f, 1.0f };
-    m_pDeviceContext->ClearRenderTargetView(m_pRenderTargetView, BackColor);
+    struct ScopedEvent
+    {
+        ID3DUserDefinedAnnotation* ann = nullptr;
+        bool active = false;
 
-    SetMVPBuffer();
+        ScopedEvent(ID3DUserDefinedAnnotation* a, const wchar_t* name) : ann(a)
+        {
+            if (ann && ann->GetStatus())
+            {
+                ann->BeginEvent(name);
+                active = true;
+            }
+        }
+
+        ~ScopedEvent()
+        {
+            if (active && ann)
+                ann->EndEvent();
+        }
+    };
+
+    ScopedEvent frameEvent(m_pAnnotation, L"Frame");
+
+    {
+        ScopedEvent evt(m_pAnnotation, L"Clear");
+        m_pDeviceContext->OMSetRenderTargets(1, &m_pRenderTargetView, nullptr);
+
+        float BackColor[4] = { 0.48f, 0.57f, 0.48f, 1.0f };
+        m_pDeviceContext->ClearRenderTargetView(m_pRenderTargetView, BackColor);
+    }
+
+    {
+        ScopedEvent evt(m_pAnnotation, L"Update MVP");
+        SetMVPBuffer();
+    }
 
     UINT stride = sizeof(Vertex);
     UINT offset = 0;
-    m_pDeviceContext->IASetVertexBuffers(0, 1, &m_pVertexBuffer, &stride, &offset);
-    m_pDeviceContext->IASetIndexBuffer(m_pIndexBuffer, DXGI_FORMAT_R16_UINT, 0);
 
-    m_pDeviceContext->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-    m_pDeviceContext->IASetInputLayout(m_pLayout);
+    {
+        ScopedEvent evt(m_pAnnotation, L"Bind pipeline");
+        m_pDeviceContext->IASetVertexBuffers(0, 1, &m_pVertexBuffer, &stride, &offset);
+        m_pDeviceContext->IASetIndexBuffer(m_pIndexBuffer, DXGI_FORMAT_R16_UINT, 0);
 
-    m_pDeviceContext->VSSetShader(m_pVertexShader, nullptr, 0);
-    m_pDeviceContext->PSSetShader(m_pPixelShader, nullptr, 0);
+        m_pDeviceContext->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+        m_pDeviceContext->IASetInputLayout(m_pLayout);
 
-    m_pDeviceContext->DrawIndexed(36, 0, 0);
-    m_pSwapChain->Present(1, 0);
+        m_pDeviceContext->VSSetShader(m_pVertexShader, nullptr, 0);
+        m_pDeviceContext->PSSetShader(m_pPixelShader, nullptr, 0);
+    }
+
+    {
+        ScopedEvent evt(m_pAnnotation, L"DrawIndexed");
+        m_pDeviceContext->DrawIndexed(36, 0, 0);
+    }
+
+    {
+        ScopedEvent evt(m_pAnnotation, L"Present");
+        m_pSwapChain->Present(1, 0);
+    }
 }
 
 void RenderClass::SetMVPBuffer()
