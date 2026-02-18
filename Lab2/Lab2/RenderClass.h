@@ -33,7 +33,7 @@ public:
         m_CameraR(5.0f),
         m_CubePosition(0.0f, 0.0f, 0.0f),
         m_CubeMoveSpeed(0.2f),
-        m_MouseSensitivity(0.0005f),
+        m_MouseSensitivity(0.0015f),
         m_MinCameraR(1.5f),
         m_MaxCameraR(50.0f),
         m_rbPressed(false),

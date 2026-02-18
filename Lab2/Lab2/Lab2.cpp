@@ -2,7 +2,7 @@
 //
 
 #include "framework.h"
-#include "Lab1.h"
+#include "Lab2.h"
 #include "RenderClass.h"
 
 #include <windowsx.h>
@@ -10,8 +10,8 @@
 
 #define MAX_LOADSTRING 100
 
-WCHAR szTitle[MAX_LOADSTRING] = L"Lab1 Group: Babakhina, Lapina, Lips";
-WCHAR szWindowClass[MAX_LOADSTRING] = L"Lab1Class";
+WCHAR szTitle[MAX_LOADSTRING] = L"Lab2 Group: Babakhina, Lapina, Lips";
+WCHAR szWindowClass[MAX_LOADSTRING] = L"Lab2Class";
 
 ATOM                MyRegisterClass(HINSTANCE hInstance);
 BOOL                InitInstance(HINSTANCE, int);
@@ -35,7 +35,7 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
         return FALSE;
     }
 
-    HACCEL hAccelTable = LoadAccelerators(hInstance, MAKEINTRESOURCE(IDC_LAB1));
+    HACCEL hAccelTable = LoadAccelerators(hInstance, MAKEINTRESOURCE(IDC_LAB2));
 
 
     MSG msg = {};
@@ -70,7 +70,6 @@ ATOM MyRegisterClass(HINSTANCE hInstance)
 
     return RegisterClassExW(&wcex);
 }
-
 
 BOOL InitInstance(HINSTANCE hInstance, int nCmdShow)
 {
@@ -158,10 +157,10 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
             switch (wParam)
             {
             case VK_UP:    
-                g_Render->MoveCube(0.0f, 0.0f, +1.0f); 
+                g_Render->MoveCube(0.0f, +1.0f, 0.0f); 
                 break;
             case VK_DOWN:  
-                g_Render->MoveCube(0.0f, 0.0f, -1.0f); 
+                g_Render->MoveCube(0.0f, -1.0f, 0.0f); 
                 break;
             case VK_LEFT:  
                 g_Render->MoveCube(-1.0f, 0.0f, 0.0f); 
@@ -169,30 +168,6 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
             case VK_RIGHT: 
                 g_Render->MoveCube(+1.0f, 0.0f, 0.0f); 
                 break;
-                /*case 'W': // Upward rotation
-                g_Render->RotateCamera(0.0f, 0.01f);
-                break;
-            case 'S': // Rotating downwards
-                g_Render->RotateCamera(0.0f, -0.01f);
-                break;
-            case 'A': // Left rotation
-                g_Render->RotateCamera(-0.01f, 0.0f);
-                break;
-            case 'D': // Right rotation
-                g_Render->RotateCamera(0.01f, 0.0f);
-                break;
-            case VK_UP:
-                g_Render->MoveCamera(0.0f, 1.0f, 0.0f);
-                break;
-            case VK_DOWN:
-                g_Render->MoveCamera(0.0f, -1.0f, 0.0f);
-                break;
-            case VK_LEFT:
-                g_Render->MoveCamera(-1.0f, 0.0f, 0.0f);
-                break;
-            case VK_RIGHT:
-                g_Render->MoveCamera(1.0f, 0.0f, 0.0f);
-                break;*/
             case VK_ADD:
             case 0xBB:
                 g_Render->MoveCamera(0.0f, 0.0f, 1.0f);
@@ -205,7 +180,6 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
             break;
         }
         return 0;
-
 
     case WM_MOUSEMOVE:
         if (g_Render != nullptr)

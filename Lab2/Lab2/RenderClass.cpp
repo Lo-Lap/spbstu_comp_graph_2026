@@ -1,4 +1,4 @@
-#include "framework.h"
+п»ї#include "framework.h"
 #include "RenderClass.h"
 
 #include <filesystem>
@@ -59,7 +59,6 @@ HRESULT RenderClass::Init(HWND hWnd, WCHAR szTitle[], WCHAR szWindowClass[])
         }
     }
 
-    // Create DirectX 11 device
     D3D_FEATURE_LEVEL level;
     D3D_FEATURE_LEVEL levels[] = { D3D_FEATURE_LEVEL_11_0 };
     if (SUCCEEDED(result))
@@ -71,8 +70,7 @@ HRESULT RenderClass::Init(HWND hWnd, WCHAR szTitle[], WCHAR szWindowClass[])
         result = D3D11CreateDevice(pSelectedAdapter, D3D_DRIVER_TYPE_UNKNOWN, NULL,
             flags, levels, 1, D3D11_SDK_VERSION, &m_pDevice, &level, &m_pDeviceContext);
     }
-    
-    // Метки для рендердока
+
     if (SUCCEEDED(result) && m_pDeviceContext)
     {
         m_pDeviceContext->QueryInterface(__uuidof(ID3DUserDefinedAnnotation), (void**)&m_pAnnotation);
@@ -107,17 +105,17 @@ HRESULT RenderClass::Init(HWND hWnd, WCHAR szTitle[], WCHAR szWindowClass[])
     if (SUCCEEDED(result))
     {
         m_CameraR = 5.0f;
-        m_LRAngle = XM_PI;     // phi
-        m_UDAngle = 0.0f;      // theta
+        m_LRAngle = 0.0f;    
+        m_UDAngle = 0.0f;    
         m_CubePosition = XMFLOAT3(0.0f, 0.0f, 0.0f);
     }
 
 
     if (pSelectedAdapter)
-      pSelectedAdapter->Release();
+        pSelectedAdapter->Release();
 
     if (pFactory)
-      pFactory->Release();
+        pFactory->Release();
 
     if (FAILED(result))
     {
@@ -136,7 +134,6 @@ void RenderClass::Terminate()
         m_pDeviceContext->Flush();
     }
 
-    // метки для рендердока 
     if (m_pAnnotation)
     {
         m_pAnnotation->Release();
@@ -200,14 +197,14 @@ HRESULT RenderClass::InitBufferShader()
 
     static const Vertex vertices[] =
     {
-        { -1.0f,  1.0f, -1.0f, RGB(0, 0, 255) },   
-        {  1.0f,  1.0f, -1.0f, RGB(0, 255, 0) },  
-        {  1.0f,  1.0f,  1.0f, RGB(0, 255, 255) }, 
-        { -1.0f,  1.0f,  1.0f, RGB(255, 0, 0) },  
-        { -1.0f, -1.0f, -1.0f, RGB(255, 0, 255) }, 
-        {  1.0f, -1.0f, -1.0f, RGB(255, 255, 0) }, 
+        { -1.0f,  1.0f, -1.0f, RGB(0, 0, 255) },
+        {  1.0f,  1.0f, -1.0f, RGB(0, 255, 0) },
+        {  1.0f,  1.0f,  1.0f, RGB(0, 255, 255) },
+        { -1.0f,  1.0f,  1.0f, RGB(255, 0, 0) },
+        { -1.0f, -1.0f, -1.0f, RGB(255, 0, 255) },
+        {  1.0f, -1.0f, -1.0f, RGB(255, 255, 0) },
         {  1.0f, -1.0f,  1.0f, RGB(255, 255, 255) },
-        { -1.0f, -1.0f,  1.0f, RGB(0, 0, 0) } 
+        { -1.0f, -1.0f,  1.0f, RGB(0, 0, 0) }
     };
 
     WORD indices[] =
@@ -440,26 +437,23 @@ void RenderClass::SetMVPBuffer()
     m_CubeAngle += 0.01f;
     if (m_CubeAngle > XM_2PI) m_CubeAngle -= XM_2PI;
 
-    XMMATRIX rot = XMMatrixRotationY(m_CubeAngle);
-    XMMATRIX tr = XMMatrixTranslation(m_CubePosition.x, m_CubePosition.y, m_CubePosition.z);
+    XMMATRIX rotation = XMMatrixRotationY(m_CubeAngle);
 
-    XMMATRIX model = rot * tr;
+    XMMATRIX translation = XMMatrixTranslation(m_CubePosition.x, m_CubePosition.y, m_CubePosition.z);
 
-    float phi = m_LRAngle;   
-    float theta = m_UDAngle; 
+    XMMATRIX model = rotation * translation;
 
-    XMFLOAT3 offset;
-    offset.x = m_CameraR * cosf(theta) * sinf(phi);
-    offset.y = m_CameraR * sinf(theta);
-    offset.z = m_CameraR * cosf(theta) * cosf(phi);
+    XMVECTOR direction = XMVectorSet(
+        cosf(m_UDAngle) * sinf(m_LRAngle),
+        sinf(m_UDAngle),
+        cosf(m_UDAngle) * cosf(m_LRAngle),
+        0.0f
+    );
 
-    XMVECTOR target = XMVectorSet(m_CubePosition.x, m_CubePosition.y, m_CubePosition.z, 1.0f);
-    XMVECTOR eye = XMVectorSet(m_CubePosition.x + offset.x,
-        m_CubePosition.y + offset.y,
-        m_CubePosition.z + offset.z, 1.0f);
-
+    XMVECTOR eyePos = XMVectorSet(m_CameraPosition.x, m_CameraPosition.y, m_CameraPosition.z, 0.0f);
+    XMVECTOR focusPoint = XMVectorAdd(eyePos, direction);
     XMVECTOR upDir = XMVectorSet(0.0f, 1.0f, 0.0f, 0.0f);
-    XMMATRIX view = XMMatrixLookAtLH(eye, target, upDir);
+    XMMATRIX view = XMMatrixLookAtLH(eyePos, focusPoint, upDir);
 
     RECT rc;
     GetClientRect(FindWindow(m_szWindowClass, m_szTitle), &rc);
@@ -503,7 +497,7 @@ HRESULT RenderClass::ConfigureBackBuffer()
 void RenderClass::Resize(HWND hWnd)
 {
     if (!m_pSwapChain || !m_pDeviceContext)
-      return;
+        return;
 
     m_pDeviceContext->OMSetRenderTargets(0, nullptr, nullptr);
 
@@ -523,15 +517,15 @@ void RenderClass::Resize(HWND hWnd)
     hr = m_pSwapChain->ResizeBuffers(2, width, height, DXGI_FORMAT_R8G8B8A8_UNORM, 0);
     if (FAILED(hr))
     {
-      MessageBox(nullptr, L"ResizeBuffers failed.", L"Error", MB_OK);
-      return;
+        MessageBox(nullptr, L"ResizeBuffers failed.", L"Error", MB_OK);
+        return;
     }
 
     HRESULT resultBack = ConfigureBackBuffer();
     if (FAILED(resultBack))
     {
-      MessageBox(nullptr, L"Configure back buffer failed.", L"Error", MB_OK);
-      return;
+        MessageBox(nullptr, L"Configure back buffer failed.", L"Error", MB_OK);
+        return;
     }
 
     m_pDeviceContext->OMSetRenderTargets(1, &m_pRenderTargetView, nullptr);
@@ -582,9 +576,9 @@ void RenderClass::MouseMoved(int x, int y, HWND hWnd)
         int dx = x - m_prevMouseX;
         int dy = y - m_prevMouseY;
 
-        const float sens = 0.005f;
+        const float sens = 0.0015f;
         m_LRAngle += dx * sens;
-        m_UDAngle += dy * sens;
+        m_UDAngle -= dy * sens;
 
         m_UDAngle = std::min(std::max(m_UDAngle, -XM_PIDIV2 + 0.01f), XM_PIDIV2 - 0.01f);
 
@@ -593,16 +587,11 @@ void RenderClass::MouseMoved(int x, int y, HWND hWnd)
     }
 }
 
-
 void RenderClass::MouseWheel(int delta)
 {
-    float steps = delta / 120.0f;
-    m_CameraR -= steps * 0.5f;  
-
-    if (m_CameraR < 1.0f)  m_CameraR = 1.0f;
-    if (m_CameraR > 50.0f) m_CameraR = 50.0f;
+    float steps = delta;
+    m_CameraPosition.z -= steps * 0.005f;
 }
-
 
 void RenderClass::MoveCube(float dx, float dy, float dz)
 {
