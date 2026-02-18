@@ -25,6 +25,17 @@ public:
         m_pVPBuffer(nullptr),
         m_szTitle(nullptr),
         m_szWindowClass(nullptr),
+
+        m_pTextureView(nullptr),
+        m_pSamplerState(nullptr),
+
+        m_pDepthView(nullptr),
+        m_pColorBuffer(nullptr),
+
+        m_pLightBuffer(nullptr),
+        m_pLightPixelShader(nullptr),
+        m_pNormalMapView(nullptr),
+
         m_CameraPosition(0.0f, 0.0f, -5.0f), 
         m_CameraSpeed(0.1f),
         m_LRAngle(0.0f), 
@@ -52,8 +63,7 @@ public:
     HRESULT InitBufferShader();
     void TerminateBufferShader();
 
-    HRESULT CompileShader(const std::wstring& path, ID3DBlob** pCodeShader=nullptr);
-
+    HRESULT CompileShader(const std::wstring& path, ID3D11VertexShader** ppVertexShader, ID3D11PixelShader** ppPixelShader, ID3DBlob** pCodeShader = nullptr);
     void Render();
     void Resize(HWND hWnd);
 
@@ -69,7 +79,7 @@ public:
 
 private:
 
-    HRESULT ConfigureBackBuffer();
+    HRESULT ConfigureBackBuffer(UINT width, UINT height);
     void SetMVPBuffer();
 
     ID3D11Device* m_pDevice;
@@ -87,6 +97,18 @@ private:
     ID3D11PixelShader* m_pPixelShader;
     ID3D11VertexShader* m_pVertexShader;
     ID3D11InputLayout* m_pLayout;
+
+    ID3D11ShaderResourceView* m_pTextureView;
+    ID3D11SamplerState* m_pSamplerState;
+
+    ID3D11ShaderResourceView* m_pNormalMapView;
+
+    ID3D11DepthStencilView* m_pDepthView;
+
+    ID3D11Buffer* m_pColorBuffer;
+
+    ID3D11Buffer* m_pLightBuffer;
+    ID3D11PixelShader* m_pLightPixelShader;
 
     float m_CubeAngle = 0.0f;
     WCHAR* m_szTitle;

@@ -33,12 +33,18 @@
     <ClInclude Include="RenderClass.h">
       <Filter>Файлы заголовков</Filter>
     </ClInclude>
+    <ClInclude Include="DDSTextureLoader11.h">
+      <Filter>Файлы заголовков</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="Lab2.cpp">
       <Filter>Исходные файлы</Filter>
     </ClCompile>
     <ClCompile Include="RenderClass.cpp">
+      <Filter>Исходные файлы</Filter>
+    </ClCompile>
+    <ClCompile Include="DDSTextureLoader11.cpp">
       <Filter>Исходные файлы</Filter>
     </ClCompile>
   </ItemGroup>
@@ -54,6 +60,12 @@
     <Image Include="Lab2.ico">
       <Filter>Файлы ресурсов</Filter>
     </Image>
+    <Image Include="cat.dds">
+      <Filter>Файлы ресурсов</Filter>
+    </Image>
+    <Image Include="cube_normal.dds">
+      <Filter>Файлы ресурсов</Filter>
+    </Image>
   </ItemGroup>
   <ItemGroup>
     <CopyFileToFolders Include="ColorPixel.ps">
@@ -62,5 +74,10 @@
     <CopyFileToFolders Include="ColorVertex.vs">
       <Filter>shader</Filter>
     </CopyFileToFolders>
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="LightPixel.ps">
+      <Filter>shader</Filter>
+    </None>
   </ItemGroup>
 </Project>

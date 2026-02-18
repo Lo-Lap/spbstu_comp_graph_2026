@@ -139,6 +139,7 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClInclude Include="DDSTextureLoader11.h" />
     <ClInclude Include="framework.h" />
     <ClInclude Include="Lab2.h" />
     <ClInclude Include="RenderClass.h" />
@@ -146,6 +147,7 @@
     <ClInclude Include="targetver.h" />
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="DDSTextureLoader11.cpp" />
     <ClCompile Include="Lab2.cpp" />
     <ClCompile Include="RenderClass.cpp" />
   </ItemGroup>
@@ -153,6 +155,8 @@
     <ResourceCompile Include="Lab2.rc" />
   </ItemGroup>
   <ItemGroup>
+    <Image Include="cat.dds" />
+    <Image Include="cube_normal.dds" />
     <Image Include="Lab2.ico" />
     <Image Include="small.ico" />
   </ItemGroup>
@@ -167,6 +171,9 @@
       <FileType>Document</FileType>
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">false</ExcludedFromBuild>
     </CopyFileToFolders>
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="LightPixel.ps" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
