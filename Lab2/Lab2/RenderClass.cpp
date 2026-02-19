@@ -127,6 +127,36 @@ HRESULT RenderClass::Init(HWND hWnd, WCHAR szTitle[], WCHAR szWindowClass[])
         m_pDeviceContext->RSSetViewports(1, &vp);
     }
 
+    INITCOMMONCONTROLSEX icc{};
+    icc.dwSize = sizeof(icc);
+    icc.dwICC = ICC_BAR_CLASSES;
+    InitCommonControlsEx(&icc);
+
+    const int x = 20;
+    int y = 20;
+    const int w = 220;
+    const int h = 30;
+    const int gap = 10;
+    for (int i = 0; i < 3; i++)
+    {
+        m_hLightSlider[i] = CreateWindowExW(
+            0, TRACKBAR_CLASSW, L"",
+            WS_CHILD | WS_VISIBLE | TBS_AUTOTICKS,
+            x + 35, y, w, h,
+            hWnd, (HMENU)(1000 + i), GetModuleHandleW(nullptr), nullptr
+        );
+        m_hLightSwatch[i] = CreateWindowExW(
+            0, L"STATIC", L"",
+            WS_CHILD | WS_VISIBLE | SS_OWNERDRAW,
+            x , y + 6, 16, 16,
+            hWnd, (HMENU)(1200 + i), GetModuleHandleW(nullptr), nullptr
+        );
+        SendMessageW(m_hLightSlider[i], TBM_SETRANGE, TRUE, MAKELPARAM(0, 200));
+        int pos = (int)(m_LightBrightness[i] * 100.0f); 
+        SendMessageW(m_hLightSlider[i], TBM_SETPOS, TRUE, pos);
+        y += h + gap;
+    }
+
     if (SUCCEEDED(result))
     {
         result = InitBufferShader();
@@ -289,6 +319,15 @@ HRESULT RenderClass::InitBufferShader()
     vpBufferDesc.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
     vpBufferDesc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
     result = m_pDevice->CreateBuffer(&vpBufferDesc, nullptr, &m_pVPBuffer);
+    if (FAILED(result))
+        return result;
+
+    D3D11_BUFFER_DESC colorBufferDesc = {};
+    colorBufferDesc.Usage = D3D11_USAGE_DEFAULT;
+    colorBufferDesc.ByteWidth = sizeof(ColorBuffer);
+    colorBufferDesc.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
+    colorBufferDesc.CPUAccessFlags = 0;
+    result = m_pDevice->CreateBuffer(&colorBufferDesc, nullptr, &m_pColorBuffer);
     if (FAILED(result))
         return result;
 
@@ -543,14 +582,16 @@ void RenderClass::SetMVPBuffer()
     m_pDeviceContext->OMSetRenderTargets(1, &m_pRenderTargetView, m_pDepthView); 
     m_pDeviceContext->OMSetDepthStencilState(nullptr, 0); 
 
-    m_CubeAngle += 0.01f;
-    if (m_CubeAngle > XM_2PI) m_CubeAngle -= XM_2PI;
+    //m_CubeAngle += 0.01f;
+    //if (m_CubeAngle > XM_2PI) m_CubeAngle -= XM_2PI;
 
-    XMMATRIX rotation = XMMatrixRotationY(m_CubeAngle);
+    //XMMATRIX rotation = XMMatrixRotationY(m_CubeAngle);
 
-    XMMATRIX translation = XMMatrixTranslation(m_CubePosition.x, m_CubePosition.y, m_CubePosition.z);
+    //XMMATRIX translation = XMMatrixTranslation(m_CubePosition.x, m_CubePosition.y, m_CubePosition.z);
 
-    XMMATRIX model = rotation * translation;
+    //XMMATRIX model = rotation * translation;
+
+    XMMATRIX model = XMMatrixTranslation(m_CubePosition.x, m_CubePosition.y, m_CubePosition.z); 
 
     XMVECTOR direction = XMVectorSet(
         cosf(m_UDAngle) * sinf(m_LRAngle),
@@ -606,20 +647,24 @@ void RenderClass::SetMVPBuffer()
 
     float r = 2.5f;
 
-    lights[0].Position = XMFLOAT3(r * cosf(t), 1.8f, r * sinf(t));
+    // pink
+    lights[0].Position = XMFLOAT3(0.2f, 0.0f, -1.2 * r);
     lights[0].Range = range;
-    lights[0].Color = XMFLOAT3(1.0f, 1.0f, 1.0f);
-    lights[0].Intensity = intensity;
+    lights[0].Color = XMFLOAT3(1.0f, 0.35f, 0.65f);
 
-    lights[1].Position = XMFLOAT3(-r, 0.6f + 0.4f * sinf(t * 1.3f), 0.0f);
+    // cyan
+    lights[1].Position = XMFLOAT3(0.0f, -0.4f, -1.2 * r);
     lights[1].Range = range;
-    lights[1].Color = XMFLOAT3(1.0f, 0.2f, 0.2f);
-    lights[1].Intensity = 0.9f;
+    lights[1].Color = XMFLOAT3(0.20f, 0.95f, 0.85f);
 
-    lights[2].Position = XMFLOAT3(0.0f, -0.8f, -r);
+    // purple
+    lights[2].Position = XMFLOAT3(0.4f, 0.4f, -1.2 * r);
     lights[2].Range = range;
-    lights[2].Color = XMFLOAT3(0.2f, 0.4f, 1.0f);
-    lights[2].Intensity = 0.9f;
+    lights[2].Color = XMFLOAT3(0.55f, 0.35f, 1.0f);
+
+    lights[0].Intensity = m_LightBrightness[0];
+    lights[1].Intensity = m_LightBrightness[1];
+    lights[2].Intensity = m_LightBrightness[2];
 
     D3D11_MAPPED_SUBRESOURCE mappedResourceLight;
     hr = m_pDeviceContext->Map(m_pLightBuffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &mappedResourceLight);
@@ -648,14 +693,16 @@ void RenderClass::SetMVPBuffer()
     m_pDeviceContext->PSSetSamplers(0, 1, &m_pSamplerState);
     m_pDeviceContext->DrawIndexed(36, 0, 0);
 
-    static float orbit = 0.0f;
-    orbit += 0.01f;
-    XMMATRIX model2 = XMMatrixRotationZ(orbit) * XMMatrixTranslation(4.0f, 0.0f, 0.0f) * XMMatrixRotationZ(-orbit);
-    XMMATRIX mT2 = XMMatrixTranspose(model2);
-    m_pDeviceContext->UpdateSubresource(m_pModelBuffer, 0, nullptr, &mT2, 0, 0);
-    m_pDeviceContext->DrawIndexed(36, 0, 0);
+    //static float orbit = 0.0f;
+    //orbit += 0.01f;
+    //XMMATRIX model2 = XMMatrixRotationZ(orbit) * XMMatrixTranslation(4.0f, 0.0f, 0.0f) * XMMatrixRotationZ(-orbit);
+    //XMMATRIX mT2 = XMMatrixTranspose(model2);
+    //m_pDeviceContext->UpdateSubresource(m_pModelBuffer, 0, nullptr, &mT2, 0, 0);
+    //m_pDeviceContext->DrawIndexed(36, 0, 0);
 
     m_pDeviceContext->PSSetShader(m_pLightPixelShader, nullptr, 0);
+    m_pDeviceContext->PSSetConstantBuffers(0, 1, &m_pColorBuffer);
+
     for (int i = 0; i < 3; i++)
     {
         XMMATRIX lightModel =
@@ -665,8 +712,18 @@ void RenderClass::SetMVPBuffer()
         XMMATRIX lightModelT = XMMatrixTranspose(lightModel);
         m_pDeviceContext->UpdateSubresource(m_pModelBuffer, 0, nullptr, &lightModelT, 0, 0);
 
-        //XMFLOAT4 lightColor(lights[i].Color.x, lights[i].Color.y, lights[i].Color.z, 1.0f);
-        //m_pDeviceContext->UpdateSubresource(m_pColorBuffer, 0, nullptr, &lightColor, 0, 0);
+        ColorBuffer lightColorCB; 
+        float k = lights[i].Intensity;
+        XMFLOAT3 c = lights[i].Color;
+        auto clamp = [](float v) { return (v < 0.f) ? 0.f : (v > 1.f ? 1.f : v); };
+        lightColorCB.color = XMFLOAT4(
+            clamp(c.x * k),
+            clamp(c.y * k),
+            clamp(c.z * k),
+            1.0f
+        );
+
+        m_pDeviceContext->UpdateSubresource(m_pColorBuffer, 0, nullptr, &lightColorCB, 0, 0);
 
         m_pDeviceContext->DrawIndexed(36, 0, 0);
     }
@@ -818,3 +875,15 @@ void RenderClass::MoveCube(float dx, float dy, float dz)
     m_CubePosition.z += dz * m_CubeMoveSpeed;
 }
 
+void RenderClass::SetLightBrightness(int index, float value)
+{
+    if (index < 0 || index >= 3) return;
+    if (value < 0.0f) value = 0.0f;
+    if (value > 5.0f) value = 5.0f;
+    m_LightBrightness[index] = value;
+}
+float RenderClass::GetLightBrightness(int index) const
+{
+    if (index < 0 || index >= 3) return 0.0f;
+    return m_LightBrightness[index];
+}

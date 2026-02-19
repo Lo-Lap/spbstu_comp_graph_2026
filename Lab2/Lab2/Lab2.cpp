@@ -73,9 +73,12 @@ ATOM MyRegisterClass(HINSTANCE hInstance)
 
 BOOL InitInstance(HINSTANCE hInstance, int nCmdShow)
 {
-    HWND hWnd = CreateWindowW(szWindowClass, szTitle, WS_OVERLAPPEDWINDOW,
+    HWND hWnd = CreateWindowW(
+        szWindowClass, szTitle,
+        WS_OVERLAPPEDWINDOW | WS_CLIPCHILDREN | WS_CLIPSIBLINGS,
         CW_USEDEFAULT, 0, CW_USEDEFAULT, 0,
-        nullptr, nullptr, hInstance, nullptr);
+        nullptr, nullptr, hInstance, nullptr
+    );
 
     if (!hWnd)
     {
@@ -188,6 +191,44 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
         }
         break;
 
+    case WM_HSCROLL:
+    {
+        HWND hCtrl = (HWND)lParam;
+        for (int i = 0; i < 3; i++)
+        {
+            if (hCtrl == g_Render->m_hLightSlider[i]) 
+            {
+                int pos = (int)SendMessageW(hCtrl, TBM_GETPOS, 0, 0);
+                float brightness = pos / 100.0f; 
+                g_Render->SetLightBrightness(i, brightness);
+                break;
+            }
+        }
+        return 0;
+    }
+    case WM_DRAWITEM:
+    {
+        const DRAWITEMSTRUCT* dis = reinterpret_cast<DRAWITEMSTRUCT*>(lParam);
+
+        int idx = (int)dis->CtlID - 1200;
+        if (idx >= 0 && idx < 3)
+        {
+            COLORREF colors[3] = {
+                RGB(255, 89, 166), 
+                RGB(51, 242, 217), 
+                RGB(140, 89, 255)  
+            };
+
+            HBRUSH br = CreateSolidBrush(colors[idx]);
+            FillRect(dis->hDC, &dis->rcItem, br);
+            DeleteObject(br);
+
+            FrameRect(dis->hDC, &dis->rcItem, (HBRUSH)GetStockObject(BLACK_BRUSH));
+
+            return TRUE;
+        }
+        break;
+    }
     default:
         return DefWindowProc(hWnd, message, wParam, lParam);
     }

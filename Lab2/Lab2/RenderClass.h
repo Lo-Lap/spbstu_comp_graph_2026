@@ -5,6 +5,8 @@
 #include <d3d11.h>
 #include <d3d11_1.h>
 #include <DirectXMath.h>
+#include <commctrl.h>
+#pragma comment(lib, "comctl32.lib")
 
 using namespace DirectX;
 
@@ -76,12 +78,19 @@ public:
     void MouseMoved(int x, int y, HWND hWnd);
     void MouseWheel(int delta);
 
+    void SetLightBrightness(int index, float value);
+    float GetLightBrightness(int index) const;
+
+    HWND m_hLightSlider[3] = { nullptr, nullptr, nullptr };
+    HWND m_hLightSwatch[3] = { nullptr, nullptr, nullptr };
 
 private:
 
     HRESULT ConfigureBackBuffer(UINT width, UINT height);
     void SetMVPBuffer();
 
+    float m_LightBrightness[3] = { 1.0f, 0.9f, 0.9f };
+    
     ID3D11Device* m_pDevice;
     ID3D11DeviceContext* m_pDeviceContext;
 
@@ -123,8 +132,8 @@ private:
     XMFLOAT3 m_CameraPosition; 
     float m_CameraSpeed;
     float m_CameraR;
-    float m_LRAngle;    //turn left/right / m_camera.phi 
-    float m_UDAngle;    //turn up / down / m_camera.theta
+    float m_LRAngle;  
+    float m_UDAngle;    
 
     bool m_rbPressed;
     int m_prevMouseX;
