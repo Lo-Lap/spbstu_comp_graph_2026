@@ -12,7 +12,7 @@ struct PointLight
 
 cbuffer LightBuffer : register(b2)
 {
-    
+ 
     PointLight lights[3];
 };
 
@@ -37,6 +37,7 @@ float3 CalculateNormalFromMap(float3 normal, float3 tangent, float3 bitangent, f
 
 float4 main(PS_INPUT input) : SV_Target
 {
+/*
     float3 tangent = normalize(input.Tangent);
     float3 bitangent = normalize(input.Bitangent);
     float3 normal = CalculateNormalFromMap(input.Normal, tangent, bitangent, input.TexCoord);
@@ -46,7 +47,8 @@ float4 main(PS_INPUT input) : SV_Target
 
     for (int i = 0; i < 3; i++)
     {
-        float3 lightDir = normalize(lights[i].Position - input.WorldPos);
+        //float3 lightDir = normalize(lights[i].Position - input.WorldPos);
+        float3 lightDir = lights[i].Position - input.WorldPos;
         float distance = length(lights[i].Position - input.WorldPos);
         float attenuation = 1.0 - saturate(distance / lights[i].Range);
         float diff = max(dot(normal, lightDir), 0.0f);
@@ -58,6 +60,26 @@ float4 main(PS_INPUT input) : SV_Target
     }
 
     float3 diffuseColor = diffuseTexture.Sample(samplerState, input.TexCoord).rgb;
-    float3 finalColor = diffuseColor * lightColor;
+    float3 finalColor = lightColor;
     return float4(finalColor, 1.0f);
+    */
+
+    float3 P = input.WorldPos;
+    float3 N = normalize(input.Normal);
+    float3 lightColor = float3(0.0f, 0.0f, 0.0f);
+    for(int i=0;i<3;i++)
+    {
+        float3 Lvec = lights[i].Position - P;
+        float dist = length(Lvec);
+        float3 L = Lvec / max(dist, 1e-4);
+        float NdotL = saturate(dot(N, L));
+        float x = dist / lights[i].Range;
+        float falloff = 1.0 - smoothstep(0.9, 1.0, x);
+        falloff = pow(falloff, 2.0);
+        float3 contrib = lights[i].Color * lights[i].Intensity * NdotL * falloff;
+        lightColor  += contrib;
+    }
+
+     return float4(lightColor, 1.0f);
+ 
 }

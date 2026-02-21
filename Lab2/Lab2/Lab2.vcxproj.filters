@@ -79,5 +79,11 @@
     <None Include="LightPixel.ps">
       <Filter>shader</Filter>
     </None>
+    <None Include="LuminancePixel.ps">
+      <Filter>shader</Filter>
+    </None>
+    <None Include="FullScreenVS.vs">
+      <Filter>shader</Filter>
+    </None>
   </ItemGroup>
 </Project>

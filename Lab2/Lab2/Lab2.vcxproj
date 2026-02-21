@@ -173,7 +173,9 @@
     </CopyFileToFolders>
   </ItemGroup>
   <ItemGroup>
+    <None Include="FullScreenVS.vs" />
     <None Include="LightPixel.ps" />
+    <None Include="LuminancePixel.ps" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

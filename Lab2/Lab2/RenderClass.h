@@ -38,9 +38,9 @@ public:
         m_pLightPixelShader(nullptr),
         m_pNormalMapView(nullptr),
 
-        m_CameraPosition(0.0f, 0.0f, -5.0f), 
+        m_CameraPosition(0.0f, 0.0f, -5.0f),
         m_CameraSpeed(0.1f),
-        m_LRAngle(0.0f), 
+        m_LRAngle(0.0f),
         m_UDAngle(0.0f),
 
         m_CameraR(5.0f),
@@ -55,9 +55,27 @@ public:
         m_rotateModel(false),
         m_angle(0.0),
 
-        m_pAnnotation(nullptr) 
-
-    {}
+        m_pAnnotation(nullptr),
+        m_LuminanceLevels(0),
+        m_pLuminancePS(nullptr),
+        m_pFullScreenVS(nullptr),
+        m_pFullScreenQuadVB(nullptr),
+        m_pLuminanceQuery(nullptr),
+        m_AdaptedLuminance(0.5f),
+        m_CurrentLuminance(0.5f),
+        m_pFullScreenLayout(nullptr),
+        m_pHDRSceneTexture(nullptr),
+        m_pHDRSceneSRV(nullptr),
+        m_pLuminanceStagingTextures{},
+        m_pHDRSceneRTV(nullptr)
+    {
+        for (int i = 0; i < 16; i++)
+        {
+            m_pLuminanceTextures[i] = nullptr;
+            m_pLuminanceRTV[i] = nullptr;
+            m_pLuminanceSRV[i] = nullptr;
+        }
+    }
 
     HRESULT Init(HWND hWnd, WCHAR szTitle[], WCHAR szWindowClass[]);
     void Terminate();
@@ -84,10 +102,15 @@ public:
     HWND m_hLightSlider[3] = { nullptr, nullptr, nullptr };
     HWND m_hLightSwatch[3] = { nullptr, nullptr, nullptr };
 
+    HRESULT InitLuminanceResources(UINT width, UINT height);
+    void CalculateAverageLuminance();
+    float ReadLuminanceFromGPU();
+
 private:
 
     HRESULT ConfigureBackBuffer(UINT width, UINT height);
     void SetMVPBuffer();
+    HRESULT CreateHDRSceneTexture(UINT width, UINT height);
 
     float m_LightBrightness[3] = { 1.0f, 0.9f, 0.9f };
     
@@ -142,6 +165,27 @@ private:
     double m_angle;
 
     ID3DUserDefinedAnnotation* m_pAnnotation;
+
+    ID3D11Texture2D* m_pLuminanceTextures[16]; 
+    ID3D11RenderTargetView* m_pLuminanceRTV[16];
+    ID3D11ShaderResourceView* m_pLuminanceSRV[16];
+    int m_LuminanceLevels; 
+
+    ID3D11PixelShader* m_pLuminancePS; 
+    ID3D11VertexShader* m_pFullScreenVS;
+    ID3D11Buffer* m_pFullScreenQuadVB;
+
+    ID3D11Query* m_pLuminanceQuery;
+
+    float m_AdaptedLuminance;
+    float m_CurrentLuminance;
+    ID3D11InputLayout* m_pFullScreenLayout;
+
+    ID3D11Texture2D* m_pHDRSceneTexture;
+    ID3D11ShaderResourceView* m_pHDRSceneSRV;
+    ID3D11RenderTargetView* m_pHDRSceneRTV;
+
+    ID3D11Texture2D* m_pLuminanceStagingTextures[16];
 
 };
 #endif

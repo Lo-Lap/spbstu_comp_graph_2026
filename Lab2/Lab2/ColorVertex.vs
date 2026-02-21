@@ -34,7 +34,7 @@ PS_INPUT main(VS_INPUT input)
     float4 worldPos = mul(float4(input.Pos, 1.0f), Model);
     output.WorldPos = worldPos.xyz;
     output.Pos = mul(worldPos, vp);
-    output.Normal = mul(input.Normal, (float3x3)Model);
+    output.Normal = normalize(mul(input.Normal, (float3x3)Model));
     output.TexCoord = input.TexCoord;
     output.CameraPos = CameraPos;
 
@@ -48,7 +48,7 @@ PS_INPUT main(VS_INPUT input)
         tangent = normalize(cross(input.Normal, float3(0, 0, 1)));
     }
 
-    float3 bitangent = cross(input.Normal, tangent);
+    float3 bitangent = normalize(cross(input.Normal, tangent));
     output.Tangent = mul(tangent, (float3x3)Model);
     output.Bitangent = mul(bitangent, (float3x3)Model);
 
