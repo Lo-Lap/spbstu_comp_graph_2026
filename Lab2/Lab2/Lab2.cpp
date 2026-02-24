@@ -204,6 +204,11 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
                 break;
             }
         }
+
+        if (LOWORD(wParam) == TB_ENDTRACK)
+        {
+            SetFocus(hWnd);
+        }
         return 0;
     }
     case WM_DRAWITEM:
@@ -213,10 +218,18 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
         int idx = (int)dis->CtlID - 1200;
         if (idx >= 0 && idx < 3)
         {
+            /*
             COLORREF colors[3] = {
                 RGB(255, 89, 166), 
                 RGB(51, 242, 217), 
                 RGB(140, 89, 255)  
+            };
+            */
+
+            COLORREF colors[3] = {
+                RGB(255, 0, 0),
+                RGB(0, 255, 0),
+                RGB(0, 0, 255)
             };
 
             HBRUSH br = CreateSolidBrush(colors[idx]);

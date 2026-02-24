@@ -951,20 +951,23 @@ void RenderClass::SetMVPBuffer()
     const float range = 1.75f;
     float r = 2.5f;
 
-    // pink
+    // red (pink)
     lights[0].Position = XMFLOAT3(0.0f, 0.5f, -r);
     lights[0].Range = range;
-    lights[0].Color = XMFLOAT3(1.0f, 0.35f, 0.65f);
+    //lights[0].Color = XMFLOAT3(1.0f, 0.35f, 0.65f);
+    lights[0].Color = XMFLOAT3(1.0f, 0.0f, 0.0f);
 
-    // cyan
+    // green (cyan)
     lights[1].Position = XMFLOAT3(-0.43f, -0.25f, -r);
     lights[1].Range = range;
-    lights[1].Color = XMFLOAT3(0.20f, 0.95f, 0.85f);
+    //lights[1].Color = XMFLOAT3(0.20f, 0.95f, 0.85f);
+    lights[1].Color = XMFLOAT3(0.0f, 1.0f, 0.0f);
 
-    // purple
+    // blue (purple)
     lights[2].Position = XMFLOAT3(0.43f, -0.25f, -r);
     lights[2].Range = range;
-    lights[2].Color = XMFLOAT3(0.55f, 0.35f, 1.0f);
+    //lights[2].Color = XMFLOAT3(0.55f, 0.35f, 1.0f);
+    lights[2].Color = XMFLOAT3(0.0f, 0.0f, 1.0f);
 
     lights[0].Intensity = m_LightBrightness[0];
     lights[1].Intensity = m_LightBrightness[1];
@@ -1213,8 +1216,19 @@ void RenderClass::MouseMoved(int x, int y, HWND hWnd)
 
 void RenderClass::MouseWheel(int delta)
 {
-    float steps = delta;
-    m_CameraPosition.z -= steps * 0.005f;
+    float steps = delta* 0.005f;
+    //m_CameraPosition.z -= steps * 0.005f;
+    XMVECTOR forward = XMVectorSet(
+        cosf(m_UDAngle) * sinf(m_LRAngle),
+        sinf(m_UDAngle),
+        cosf(m_UDAngle) * cosf(m_LRAngle),
+        0.0f
+    );
+
+    XMVECTOR camPos = XMLoadFloat3(&m_CameraPosition);
+    camPos += forward * steps;
+
+    XMStoreFloat3(&m_CameraPosition, camPos);
 }
 
 void RenderClass::MoveCube(float dx, float dy, float dz)
