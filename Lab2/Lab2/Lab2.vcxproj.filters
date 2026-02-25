@@ -60,12 +60,6 @@
     <Image Include="Lab2.ico">
       <Filter>Файлы ресурсов</Filter>
     </Image>
-    <Image Include="cat.dds">
-      <Filter>Файлы ресурсов</Filter>
-    </Image>
-    <Image Include="cube_normal.dds">
-      <Filter>Файлы ресурсов</Filter>
-    </Image>
   </ItemGroup>
   <ItemGroup>
     <CopyFileToFolders Include="ColorPixel.ps">
@@ -74,16 +68,26 @@
     <CopyFileToFolders Include="ColorVertex.vs">
       <Filter>shader</Filter>
     </CopyFileToFolders>
-  </ItemGroup>
-  <ItemGroup>
-    <None Include="LightPixel.ps">
+    <CopyFileToFolders Include="LuminancePixel.ps">
       <Filter>shader</Filter>
-    </None>
-    <None Include="LuminancePixel.ps">
+    </CopyFileToFolders>
+    <CopyFileToFolders Include="LightPixel.ps">
       <Filter>shader</Filter>
-    </None>
-    <None Include="FullScreenVS.vs">
+    </CopyFileToFolders>
+    <CopyFileToFolders Include="FullScreenVS.vs">
       <Filter>shader</Filter>
-    </None>
+    </CopyFileToFolders>
+    <CopyFileToFolders Include="cube_normal.dds">
+      <Filter>Файлы ресурсов</Filter>
+    </CopyFileToFolders>
+    <CopyFileToFolders Include="cat.dds">
+      <Filter>Файлы ресурсов</Filter>
+    </CopyFileToFolders>
+    <CopyFileToFolders Include="ToneMapPixel.ps">
+      <Filter>shader</Filter>
+    </CopyFileToFolders>
+    <CopyFileToFolders Include="LuminanceDownsample.ps">
+      <Filter>shader</Filter>
+    </CopyFileToFolders>
   </ItemGroup>
 </Project>

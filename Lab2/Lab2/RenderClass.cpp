@@ -50,6 +50,12 @@ struct FullScreenVertex
     XMFLOAT2 TexCoord;
 };
 
+struct ToneMapParamsCB
+{
+    XMFLOAT4 Params;
+};
+
+
 HRESULT RenderClass::Init(HWND hWnd, WCHAR szTitle[], WCHAR szWindowClass[])
 {
     m_szTitle = szTitle;
@@ -164,11 +170,11 @@ HRESULT RenderClass::Init(HWND hWnd, WCHAR szTitle[], WCHAR szWindowClass[])
         m_hLightSwatch[i] = CreateWindowExW(
             0, L"STATIC", L"",
             WS_CHILD | WS_VISIBLE | SS_OWNERDRAW,
-            x , y + 6, 16, 16,
+            x, y + 6, 16, 16,
             hWnd, (HMENU)(1200 + i), GetModuleHandleW(nullptr), nullptr
         );
         SendMessageW(m_hLightSlider[i], TBM_SETRANGE, TRUE, MAKELPARAM(0, 200));
-        int pos = (int)(m_LightBrightness[i] * 100.0f); 
+        int pos = (int)(m_LightBrightness[i] * 100.0f);
         SendMessageW(m_hLightSlider[i], TBM_SETPOS, TRUE, pos);
         y += h + gap;
     }
@@ -181,10 +187,10 @@ HRESULT RenderClass::Init(HWND hWnd, WCHAR szTitle[], WCHAR szWindowClass[])
     if (SUCCEEDED(result))
     {
         m_CameraR = 5.0f;
-        m_CameraPosition = XMFLOAT3(0.0f, 0.0f, -m_CameraR); 
-        m_CubeAngle = 0.0f; 
-        m_LRAngle = 0.0f;    
-        m_UDAngle = 0.0f;    
+        m_CameraPosition = XMFLOAT3(0.0f, 0.0f, -m_CameraR);
+        m_CubeAngle = 0.0f;
+        m_LRAngle = 0.0f;
+        m_UDAngle = 0.0f;
         m_CubePosition = XMFLOAT3(0.0f, 0.0f, 0.0f);
     }
 
@@ -236,6 +242,21 @@ HRESULT RenderClass::InitBufferShader()
     {
         result = CompileShader(L"LightPixel.ps", nullptr, &m_pLightPixelShader);
     }
+
+    result = CompileShader(L"ToneMapPixel.ps", nullptr, &m_pToneMapPS);
+
+    if (FAILED(result))
+        return result;
+
+    D3D11_BUFFER_DESC cbDesc = {};
+    cbDesc.Usage = D3D11_USAGE_DYNAMIC;
+    cbDesc.ByteWidth = sizeof(ToneMapParamsCB);
+    cbDesc.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
+    cbDesc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
+    result = m_pDevice->CreateBuffer(&cbDesc, nullptr, &m_pToneMapCB);
+    if (FAILED(result))
+        return result;
+
 
     static const CubeVertex vertices[] =
     {
@@ -383,12 +404,17 @@ HRESULT RenderClass::InitLuminanceResources(UINT width, UINT height)
     }
 
     result = CompileShader(L"FullScreenVS.vs", &m_pFullScreenVS, nullptr);
-    if (FAILED(result)) 
+    if (FAILED(result))
         return result;
 
     result = CompileShader(L"LuminancePixel.ps", nullptr, &m_pLuminancePS);
-    if (FAILED(result)) 
+    if (FAILED(result))
         return result;
+
+    result = CompileShader(L"LuminanceDownsample.ps", nullptr, &m_pDownsamplePS);
+    if (FAILED(result))
+        return result;
+
 
     D3D11_INPUT_ELEMENT_DESC layout[] =
     {
@@ -398,12 +424,12 @@ HRESULT RenderClass::InitLuminanceResources(UINT width, UINT height)
 
     ID3DBlob* pVSBlob = nullptr;
     result = CompileShader(L"FullScreenVS.vs", nullptr, nullptr, &pVSBlob);
-    if (FAILED(result)) 
+    if (FAILED(result))
         return result;
 
     result = m_pDevice->CreateInputLayout(layout, 2, pVSBlob->GetBufferPointer(), pVSBlob->GetBufferSize(), &m_pFullScreenLayout);
     pVSBlob->Release();
-    if (FAILED(result)) 
+    if (FAILED(result))
         return result;
 
     FullScreenVertex vertices[] =
@@ -423,7 +449,7 @@ HRESULT RenderClass::InitLuminanceResources(UINT width, UINT height)
     initData.pSysMem = vertices;
 
     result = m_pDevice->CreateBuffer(&bd, &initData, &m_pFullScreenQuadVB);
-    if (FAILED(result)) 
+    if (FAILED(result))
         return result;
 
     size = minDim;
@@ -442,15 +468,15 @@ HRESULT RenderClass::InitLuminanceResources(UINT width, UINT height)
         texDesc.BindFlags = D3D11_BIND_RENDER_TARGET | D3D11_BIND_SHADER_RESOURCE;
 
         result = m_pDevice->CreateTexture2D(&texDesc, nullptr, &m_pLuminanceTextures[i]);
-        if (FAILED(result)) 
+        if (FAILED(result))
             return result;
 
         result = m_pDevice->CreateRenderTargetView(m_pLuminanceTextures[i], nullptr, &m_pLuminanceRTV[i]);
-        if (FAILED(result)) 
+        if (FAILED(result))
             return result;
 
         result = m_pDevice->CreateShaderResourceView(m_pLuminanceTextures[i], nullptr, &m_pLuminanceSRV[i]);
-        if (FAILED(result)) 
+        if (FAILED(result))
             return result;
 
         size /= 2;
@@ -473,7 +499,7 @@ HRESULT RenderClass::InitLuminanceResources(UINT width, UINT height)
         stagingDesc.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
 
         result = m_pDevice->CreateTexture2D(&stagingDesc, nullptr, &m_pLuminanceStagingTextures[i]);
-        if (FAILED(result)) 
+        if (FAILED(result))
             return result;
 
         size /= 2;
@@ -488,7 +514,7 @@ HRESULT RenderClass::InitLuminanceResources(UINT width, UINT height)
 
 void RenderClass::CalculateAverageLuminance()
 {
-    if (!m_pDeviceContext || !m_pHDRSceneSRV) 
+    if (!m_pDeviceContext || !m_pHDRSceneSRV)
         return;
 
     ID3D11RenderTargetView* pOldRTV = nullptr;
@@ -530,6 +556,8 @@ void RenderClass::CalculateAverageLuminance()
     m_pDeviceContext->PSSetShaderResources(0, 1, &m_pHDRSceneSRV);
     m_pDeviceContext->Draw(4, 0);
 
+    m_pDeviceContext->PSSetShader(m_pDownsamplePS, nullptr, 0);
+
     for (int i = 1; i < m_LuminanceLevels; i++)
     {
         m_pLuminanceTextures[i]->GetDesc(&texDesc);
@@ -551,15 +579,15 @@ void RenderClass::CalculateAverageLuminance()
     m_pDeviceContext->PSSetShader(pOldPS, nullptr, 0);
     m_pDeviceContext->IASetInputLayout(pOldLayout);
 
-    if (pOldVS) 
+    if (pOldVS)
         pOldVS->Release();
-    if (pOldPS) 
+    if (pOldPS)
         pOldPS->Release();
-    if (pOldLayout) 
+    if (pOldLayout)
         pOldLayout->Release();
-    if (pOldRTV) 
+    if (pOldRTV)
         pOldRTV->Release();
-    if (pOldDSV) 
+    if (pOldDSV)
         pOldDSV->Release();
 
     if (m_pLuminanceQuery)
@@ -586,11 +614,10 @@ float RenderClass::ReadLuminanceFromGPU()
     HRESULT hr = m_pDeviceContext->Map(m_pLuminanceStagingTextures[lastLevel], 0, D3D11_MAP_READ, 0, &mapped);
 
     float luminance = 0.5f;
-
     if (SUCCEEDED(hr))
     {
-        float* data = (float*)mapped.pData;
-        luminance = data[0];
+        float logAvg = ((float*)mapped.pData)[0]; 
+        luminance = expf(logAvg) - 1.0f; 
         m_pDeviceContext->Unmap(m_pLuminanceStagingTextures[lastLevel], 0);
     }
 
@@ -616,29 +643,29 @@ void RenderClass::Terminate()
 
     for (int i = 0; i < 16; i++)
     {
-        if (m_pLuminanceTextures[i]) 
+        if (m_pLuminanceTextures[i])
             m_pLuminanceTextures[i]->Release();
-        if (m_pLuminanceRTV[i]) 
+        if (m_pLuminanceRTV[i])
             m_pLuminanceRTV[i]->Release();
-        if (m_pLuminanceSRV[i]) 
+        if (m_pLuminanceSRV[i])
             m_pLuminanceSRV[i]->Release();
-        if (m_pLuminanceStagingTextures[i]) 
+        if (m_pLuminanceStagingTextures[i])
             m_pLuminanceStagingTextures[i]->Release();
     }
 
-    if (m_pLuminanceQuery) 
+    if (m_pLuminanceQuery)
         m_pLuminanceQuery->Release();
 
     if (m_pFullScreenLayout)
-      m_pFullScreenLayout->Release();
+        m_pFullScreenLayout->Release();
 
-    if (m_pHDRSceneSRV) 
+    if (m_pHDRSceneSRV)
         m_pHDRSceneSRV->Release();
 
     if (m_pHDRSceneRTV)
         m_pHDRSceneRTV->Release();
 
-    if (m_pHDRSceneTexture) 
+    if (m_pHDRSceneTexture)
         m_pHDRSceneTexture->Release();
 
     if (m_pRenderTargetView)
@@ -818,8 +845,11 @@ void RenderClass::Render()
 
     {
         ScopedEvent evt(m_pAnnotation, L"Clear");
-        ID3D11RenderTargetView* rtvs[2] = { m_pRenderTargetView, m_pHDRSceneRTV };
-        m_pDeviceContext->OMSetRenderTargets(2, rtvs, m_pDepthView);
+       /* ID3D11RenderTargetView* rtvs[2] = { m_pRenderTargetView, m_pHDRSceneRTV };
+        m_pDeviceContext->OMSetRenderTargets(2, rtvs, m_pDepthView);*/
+
+        m_pDeviceContext->OMSetRenderTargets(1, &m_pHDRSceneRTV, m_pDepthView);
+
 
         float BackColor[4] = { 0.48f, 0.57f, 0.48f, 1.0f };
         m_pDeviceContext->ClearRenderTargetView(m_pRenderTargetView, BackColor);
@@ -860,19 +890,41 @@ void RenderClass::Render()
         ScopedEvent evt(m_pAnnotation, L"Luminance Calculation");
         CalculateAverageLuminance();
 
+        m_CurrentLuminance = ReadLuminanceFromGPU();
+
         static int frameCount = 0;
         frameCount++;
-        if (frameCount % 30 == 0)
+        if (frameCount % 20 == 0)
         {
-            m_CurrentLuminance = ReadLuminanceFromGPU();
-
             char buf[256];
-            sprintf_s(buf, "Average Luminance: %f\n", m_CurrentLuminance);
+            //sprintf_s(buf, "Average Luminance: %f\n", m_CurrentLuminance);
+            sprintf_s(buf, "CurrLum=%.4f AdaptLum=%.4f\n", m_CurrentLuminance, m_AdaptedLuminance);
+
             OutputDebugStringA(buf);
         }
+
+        ULONGLONG now = GetTickCount64();
+        float dt = (m_LastFrameTime == 0) ? (1.0f / 60.0f)
+            : float(now - m_LastFrameTime) / 10.0f;
+        m_LastFrameTime = now;
+        if (dt > 0.1f) dt = 0.1f;
+        //float tau = std::max(m_EyeAdaptationTime, 0.001f);
+
+        float tauUp = 1.5f; 
+        float tauDown = 1.5f; 
+        float tau = (m_CurrentLuminance > m_AdaptedLuminance) ? tauUp : tauDown;
+        float k = 1.0f - expf(-dt / tau);
+        m_AdaptedLuminance += (m_CurrentLuminance - m_AdaptedLuminance) * k;
+
+
     }
 
     {
+        CalculateAverageLuminance();
+        m_CurrentLuminance = ReadLuminanceFromGPU();
+        ApplyToneMapping();
+
+
         ScopedEvent evt(m_pAnnotation, L"Present");
         m_pSwapChain->Present(1, 0);
     }
@@ -881,7 +933,7 @@ void RenderClass::Render()
 void RenderClass::SetMVPBuffer()
 {
     //m_pDeviceContext->OMSetRenderTargets(1, &m_pRenderTargetView, m_pDepthView); 
-    m_pDeviceContext->OMSetDepthStencilState(nullptr, 0); 
+    m_pDeviceContext->OMSetDepthStencilState(nullptr, 0);
 
     //m_CubeAngle += 0.01f;
     //if (m_CubeAngle > XM_2PI) m_CubeAngle -= XM_2PI;
@@ -892,7 +944,7 @@ void RenderClass::SetMVPBuffer()
 
     //XMMATRIX model = rotation * translation;
 
-    XMMATRIX model = XMMatrixTranslation(m_CubePosition.x, m_CubePosition.y, m_CubePosition.z); 
+    XMMATRIX model = XMMatrixTranslation(m_CubePosition.x, m_CubePosition.y, m_CubePosition.z);
 
     XMVECTOR direction = XMVectorSet(
         cosf(m_UDAngle) * sinf(m_LRAngle),
@@ -937,13 +989,13 @@ void RenderClass::SetMVPBuffer()
     HRESULT hr = m_pDeviceContext->Map(m_pVPBuffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &mappedResource);
     if (SUCCEEDED(hr))
     {
-      memcpy(mappedResource.pData, &cameraBuffer, sizeof(CameraBuffer));
-      m_pDeviceContext->Unmap(m_pVPBuffer, 0);
+        memcpy(mappedResource.pData, &cameraBuffer, sizeof(CameraBuffer));
+        m_pDeviceContext->Unmap(m_pVPBuffer, 0);
     }
 
     static float orbitLight = XM_PI / 2;
     orbitLight += 0.01f;
-    if (orbitLight > XM_2PI) 
+    if (orbitLight > XM_2PI)
         orbitLight -= XM_2PI;
 
     PointLight lights[3];
@@ -961,13 +1013,15 @@ void RenderClass::SetMVPBuffer()
     lights[1].Position = XMFLOAT3(-0.43f, -0.25f, -r);
     lights[1].Range = range;
     //lights[1].Color = XMFLOAT3(0.20f, 0.95f, 0.85f);
-    lights[1].Color = XMFLOAT3(0.0f, 1.0f, 0.0f);
+    //lights[1].Color = XMFLOAT3(0.0f, 1.0f, 0.0f);
+    lights[1].Color = XMFLOAT3(1.0f, 0.0f, 0.0f);
 
     // blue (purple)
     lights[2].Position = XMFLOAT3(0.43f, -0.25f, -r);
     lights[2].Range = range;
     //lights[2].Color = XMFLOAT3(0.55f, 0.35f, 1.0f);
-    lights[2].Color = XMFLOAT3(0.0f, 0.0f, 1.0f);
+    //lights[2].Color = XMFLOAT3(0.0f, 0.0f, 1.0f);
+    lights[2].Color = XMFLOAT3(1.0f, 0.0f, 0.0f);
 
     lights[0].Intensity = m_LightBrightness[0];
     lights[1].Intensity = m_LightBrightness[1];
@@ -1019,7 +1073,7 @@ void RenderClass::SetMVPBuffer()
         XMMATRIX lightModelT = XMMatrixTranspose(lightModel);
         m_pDeviceContext->UpdateSubresource(m_pModelBuffer, 0, nullptr, &lightModelT, 0, 0);
 
-        ColorBuffer lightColorCB; 
+        ColorBuffer lightColorCB;
         float k = lights[i].Intensity;
         XMFLOAT3 c = lights[i].Color;
         auto clamp = [](float v) { return (v < 0.f) ? 0.f : (v > 1.f ? 1.f : v); };
@@ -1074,11 +1128,11 @@ HRESULT RenderClass::CreateHDRSceneTexture(UINT width, UINT height)
 {
     HRESULT hr;
 
-    if (m_pHDRSceneSRV) 
+    if (m_pHDRSceneSRV)
         m_pHDRSceneSRV->Release();
     if (m_pHDRSceneRTV)
         m_pHDRSceneRTV->Release();
-    if (m_pHDRSceneTexture) 
+    if (m_pHDRSceneTexture)
         m_pHDRSceneTexture->Release();
 
     D3D11_TEXTURE2D_DESC texDesc = {};
@@ -1092,7 +1146,7 @@ HRESULT RenderClass::CreateHDRSceneTexture(UINT width, UINT height)
     texDesc.BindFlags = D3D11_BIND_RENDER_TARGET | D3D11_BIND_SHADER_RESOURCE;
 
     hr = m_pDevice->CreateTexture2D(&texDesc, nullptr, &m_pHDRSceneTexture);
-    if (FAILED(hr)) 
+    if (FAILED(hr))
         return hr;
 
     hr = m_pDevice->CreateRenderTargetView(m_pHDRSceneTexture, nullptr, &m_pHDRSceneRTV);
@@ -1216,7 +1270,7 @@ void RenderClass::MouseMoved(int x, int y, HWND hWnd)
 
 void RenderClass::MouseWheel(int delta)
 {
-    float steps = delta* 0.005f;
+    float steps = delta * 0.005f;
     //m_CameraPosition.z -= steps * 0.005f;
     XMVECTOR forward = XMVectorSet(
         cosf(m_UDAngle) * sinf(m_LRAngle),
@@ -1250,4 +1304,38 @@ float RenderClass::GetLightBrightness(int index) const
 {
     if (index < 0 || index >= 3) return 0.0f;
     return m_LightBrightness[index];
+}
+
+void RenderClass::ApplyToneMapping()
+{
+    if (!m_pHDRSceneSRV || !m_pToneMapPS || !m_pToneMapCB) return;
+    m_pDeviceContext->OMSetRenderTargets(1, &m_pRenderTargetView, nullptr);
+    RECT rc;
+    GetClientRect(FindWindow(m_szWindowClass, m_szTitle), &rc);
+    D3D11_VIEWPORT vp = {};
+    vp.Width = float(rc.right - rc.left);
+    vp.Height = float(rc.bottom - rc.top);
+    vp.MinDepth = 0.0f;
+    vp.MaxDepth = 1.0f;
+    m_pDeviceContext->RSSetViewports(1, &vp);
+    UINT stride = sizeof(FullScreenVertex);
+    UINT offset = 0;
+    m_pDeviceContext->IASetVertexBuffers(0, 1, &m_pFullScreenQuadVB, &stride, &offset);
+    m_pDeviceContext->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLESTRIP);
+    m_pDeviceContext->IASetInputLayout(m_pFullScreenLayout);
+    m_pDeviceContext->VSSetShader(m_pFullScreenVS, nullptr, 0);
+    m_pDeviceContext->PSSetShader(m_pToneMapPS, nullptr, 0);
+    m_pDeviceContext->PSSetShaderResources(0, 1, &m_pHDRSceneSRV);
+    m_pDeviceContext->PSSetSamplers(0, 1, &m_pSamplerState);
+    D3D11_MAPPED_SUBRESOURCE mapped = {};
+    if (SUCCEEDED(m_pDeviceContext->Map(m_pToneMapCB, 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped)))
+    {
+        ToneMapParamsCB* cb = (ToneMapParamsCB*)mapped.pData;
+        cb->Params = XMFLOAT4(m_AdaptedLuminance, 0, 0, 0);
+        m_pDeviceContext->Unmap(m_pToneMapCB, 0);
+    }
+    m_pDeviceContext->PSSetConstantBuffers(0, 1, &m_pToneMapCB);
+    m_pDeviceContext->Draw(4, 0);
+    ID3D11ShaderResourceView* nullSRV = nullptr;
+    m_pDeviceContext->PSSetShaderResources(0, 1, &nullSRV);
 }

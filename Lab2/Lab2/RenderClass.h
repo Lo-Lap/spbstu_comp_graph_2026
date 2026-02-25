@@ -67,7 +67,12 @@ public:
         m_pHDRSceneTexture(nullptr),
         m_pHDRSceneSRV(nullptr),
         m_pLuminanceStagingTextures{},
-        m_pHDRSceneRTV(nullptr)
+        m_pHDRSceneRTV(nullptr),
+        m_pToneMapPS(nullptr),
+        m_pToneMapCB(nullptr),
+        m_LastFrameTime(0),
+        m_EyeAdaptationTime(2.0f),
+        m_pDownsamplePS(nullptr)
     {
         for (int i = 0; i < 16; i++)
         {
@@ -105,6 +110,7 @@ public:
     HRESULT InitLuminanceResources(UINT width, UINT height);
     void CalculateAverageLuminance();
     float ReadLuminanceFromGPU();
+    void ApplyToneMapping();
 
 private:
 
@@ -186,6 +192,14 @@ private:
     ID3D11RenderTargetView* m_pHDRSceneRTV;
 
     ID3D11Texture2D* m_pLuminanceStagingTextures[16];
+
+    ID3D11PixelShader* m_pToneMapPS;
+    ID3D11Buffer* m_pToneMapCB;
+
+    ULONGLONG m_LastFrameTime;
+    float m_EyeAdaptationTime;
+
+    ID3D11PixelShader* m_pDownsamplePS;
 
 };
 #endif

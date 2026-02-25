@@ -1,24 +1,15 @@
 Texture2D inputTexture : register(t0);
 SamplerState linearSampler : register(s0);
-
 struct PS_INPUT
 {
-    float4 Pos : SV_POSITION;
-    float2 TexCoord : TEXCOORD;
+ float4 Pos : SV_POSITION;
+ float2 TexCoord : TEXCOORD;
 };
-
-float CalculateLuminance(float3 color)
-{
-    return dot(color, float3(0.2126f, 0.7151f, 0.0722f));
-}
-
+static const float3 ChannelsWeight = float3(0.2126f, 0.7151f, 0.0722f);
 float4 main(PS_INPUT input) : SV_Target
 {
-    float3 color = inputTexture.Sample(linearSampler, input.TexCoord).rgb;
-    
-    float luminance = CalculateLuminance(color);
-    
-    luminance = max(luminance, 0.0001f);
-    
-    return float4(luminance, log(luminance), 0.0f, 0.0f);
+ float3 color = inputTexture.Sample(linearSampler, input.TexCoord).rgb;
+ float logBrightness = log(dot(color, ChannelsWeight) + 1.0f);
+ return float4(logBrightness, logBrightness, logBrightness, 1.0f);
 }
+
