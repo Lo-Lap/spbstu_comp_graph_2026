@@ -651,34 +651,56 @@ void RenderClass::Terminate()
             m_pLuminanceSRV[i]->Release();
         if (m_pLuminanceStagingTextures[i])
             m_pLuminanceStagingTextures[i]->Release();
+        m_pLuminanceTextures[i] = nullptr;
+        m_pLuminanceRTV[i] = nullptr;
+        m_pLuminanceSRV[i] = nullptr;
+        m_pLuminanceStagingTextures[i] = nullptr;
     }
 
-    if (m_pLuminanceQuery)
+    if (m_pLuminanceQuery) {
         m_pLuminanceQuery->Release();
+        m_pLuminanceQuery = nullptr;
+    }
 
-    if (m_pFullScreenLayout)
+    if (m_pFullScreenLayout) {
         m_pFullScreenLayout->Release();
+        m_pFullScreenLayout = nullptr;
+    }
 
-    if (m_pHDRSceneSRV)
+    if (m_pHDRSceneSRV) {
         m_pHDRSceneSRV->Release();
+        m_pHDRSceneSRV = nullptr;
+    }
 
-    if (m_pHDRSceneRTV)
+    if (m_pHDRSceneRTV) {
         m_pHDRSceneRTV->Release();
+        m_pHDRSceneRTV = nullptr;
+    }
 
-    if (m_pHDRSceneTexture)
+    if (m_pHDRSceneTexture) {
         m_pHDRSceneTexture->Release();
+        m_pHDRSceneTexture = nullptr;
+    }
 
-    if (m_pRenderTargetView)
+    if (m_pRenderTargetView) {
         m_pRenderTargetView->Release();
+        m_pRenderTargetView = nullptr;
+    }
 
-    if (m_pDepthView)
+    if (m_pDepthView) {
         m_pDepthView->Release();
+        m_pDepthView = nullptr;
+    }
 
-    if (m_pSwapChain)
+    if (m_pSwapChain) {
         m_pSwapChain->Release();
+        m_pSwapChain = nullptr;
+    }
 
-    if (m_pDeviceContext)
+    if (m_pDeviceContext) {
         m_pDeviceContext->Release();
+        m_pDeviceContext = nullptr;
+    }
 
     if (m_pDevice) {
 #ifdef _DEBUG
@@ -697,50 +719,101 @@ void RenderClass::Terminate()
 
 void RenderClass::TerminateBufferShader()
 {
-    if (m_pLayout)
+    if (m_pLayout) {
         m_pLayout->Release();
+        m_pLayout = nullptr;
+    }
 
-    if (m_pPixelShader)
+    if (m_pPixelShader) {
         m_pPixelShader->Release();
+        m_pPixelShader = nullptr;
+    }
 
-    if (m_pVertexShader)
+    if (m_pVertexShader) {
         m_pVertexShader->Release();
+        m_pVertexShader = nullptr;
+    }
 
-    if (m_pLightPixelShader)
+    if (m_pLightPixelShader) {
         m_pLightPixelShader->Release();
+        m_pLightPixelShader = nullptr;
+    }
 
-    if (m_pFullScreenVS)
+    if (m_pFullScreenVS) {
         m_pFullScreenVS->Release();
+        m_pFullScreenVS = nullptr;
+    }
 
-    if (m_pLuminancePS)
+    if (m_pLuminancePS) {
         m_pLuminancePS->Release();
+        m_pLuminancePS = nullptr;
+    }
 
-    if (m_pFullScreenQuadVB)
+    if (m_pFullScreenQuadVB) {
         m_pFullScreenQuadVB->Release();
+        m_pFullScreenQuadVB = nullptr;
+    }
 
-    if (m_pIndexBuffer)
+    if (m_pIndexBuffer) {
         m_pIndexBuffer->Release();
+        m_pIndexBuffer = nullptr;
+    }
 
-    if (m_pVertexBuffer)
+    if (m_pVertexBuffer) {
         m_pVertexBuffer->Release();
+        m_pVertexBuffer = nullptr;
+    }
 
-    if (m_pModelBuffer)
+    if (m_pModelBuffer) {
         m_pModelBuffer->Release();
+        m_pModelBuffer = nullptr;
+    }
 
-    if (m_pVPBuffer)
+    if (m_pVPBuffer) {
         m_pVPBuffer->Release();
+        m_pVPBuffer = nullptr;
+    }
 
-    if (m_pTextureView)
+    if (m_pTextureView) {
         m_pTextureView->Release();
+        m_pTextureView = nullptr;
+    }
 
-    if (m_pNormalMapView)
+    if (m_pNormalMapView) {
         m_pNormalMapView->Release();
+        m_pNormalMapView = nullptr;
+    }
 
-    if (m_pSamplerState)
+    if (m_pSamplerState) {
         m_pSamplerState->Release();
+        m_pSamplerState = nullptr;
+    }
 
-    if (m_pLightBuffer)
+    if (m_pLightBuffer) {
         m_pLightBuffer->Release();
+        m_pLightBuffer = nullptr;
+    }
+
+    if (m_pColorBuffer) {
+        m_pColorBuffer->Release();
+        m_pColorBuffer = nullptr;
+    }
+
+    if (m_pToneMapCB) {
+        m_pToneMapCB->Release();
+        m_pToneMapCB = nullptr;
+    }
+
+    if (m_pToneMapPS) {
+        m_pToneMapPS->Release();
+        m_pToneMapPS = nullptr;
+    }
+
+
+    if (m_pDownsamplePS) {
+        m_pDownsamplePS->Release();
+        m_pDownsamplePS = nullptr;
+    }
 
 }
 
