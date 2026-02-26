@@ -908,15 +908,12 @@ void RenderClass::Render()
             : float(now - m_LastFrameTime) / 10.0f;
         m_LastFrameTime = now;
         if (dt > 0.1f) dt = 0.1f;
-        //float tau = std::max(m_EyeAdaptationTime, 0.001f);
 
         float tauUp = 1.5f; 
         float tauDown = 1.5f; 
         float tau = (m_CurrentLuminance > m_AdaptedLuminance) ? tauUp : tauDown;
         float k = 1.0f - expf(-dt / tau);
         m_AdaptedLuminance += (m_CurrentLuminance - m_AdaptedLuminance) * k;
-
-
     }
 
     {
@@ -1013,15 +1010,15 @@ void RenderClass::SetMVPBuffer()
     lights[1].Position = XMFLOAT3(-0.43f, -0.25f, -r);
     lights[1].Range = range;
     //lights[1].Color = XMFLOAT3(0.20f, 0.95f, 0.85f);
-    //lights[1].Color = XMFLOAT3(0.0f, 1.0f, 0.0f);
-    lights[1].Color = XMFLOAT3(1.0f, 0.0f, 0.0f);
+    lights[1].Color = XMFLOAT3(0.0f, 1.0f, 0.0f);
+    //lights[1].Color = XMFLOAT3(1.0f, 0.0f, 0.0f);
 
     // blue (purple)
     lights[2].Position = XMFLOAT3(0.43f, -0.25f, -r);
     lights[2].Range = range;
     //lights[2].Color = XMFLOAT3(0.55f, 0.35f, 1.0f);
-    //lights[2].Color = XMFLOAT3(0.0f, 0.0f, 1.0f);
-    lights[2].Color = XMFLOAT3(1.0f, 0.0f, 0.0f);
+    lights[2].Color = XMFLOAT3(0.0f, 0.0f, 1.0f);
+    //lights[2].Color = XMFLOAT3(1.0f, 0.0f, 0.0f);
 
     lights[0].Intensity = m_LightBrightness[0];
     lights[1].Intensity = m_LightBrightness[1];
@@ -1203,10 +1200,8 @@ void RenderClass::Resize(HWND hWnd)
         return;
     }
 
-    // Пересоздаем HDR текстуру для сцены
     CreateHDRSceneTexture(width, height);
 
-    // Пересоздаем luminance ресурсы с новым размером
     InitLuminanceResources(width, height);
 
     m_pDeviceContext->OMSetRenderTargets(1, &m_pRenderTargetView, m_pDepthView);
