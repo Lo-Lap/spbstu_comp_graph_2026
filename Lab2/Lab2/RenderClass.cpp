@@ -109,7 +109,7 @@ HRESULT RenderClass::Init(HWND hWnd, WCHAR szTitle[], WCHAR szWindowClass[])
     {
         DXGI_SWAP_CHAIN_DESC swapChainDesc = { 0 };
         swapChainDesc.BufferCount = 2;
-        swapChainDesc.BufferDesc.Format = DXGI_FORMAT_R16G16B16A16_FLOAT;
+        swapChainDesc.BufferDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;
         swapChainDesc.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
         swapChainDesc.OutputWindow = hWnd;
         swapChainDesc.SampleDesc.Count = 1;
@@ -173,7 +173,7 @@ HRESULT RenderClass::Init(HWND hWnd, WCHAR szTitle[], WCHAR szWindowClass[])
             x, y + 6, 16, 16,
             hWnd, (HMENU)(1200 + i), GetModuleHandleW(nullptr), nullptr
         );
-        SendMessageW(m_hLightSlider[i], TBM_SETRANGE, TRUE, MAKELPARAM(0, 200));
+        SendMessageW(m_hLightSlider[i], TBM_SETRANGE, TRUE, MAKELPARAM(0, 100));
         int pos = (int)(m_LightBrightness[i] * 100.0f);
         SendMessageW(m_hLightSlider[i], TBM_SETPOS, TRUE, pos);
         y += h + gap;
@@ -1210,7 +1210,8 @@ HRESULT RenderClass::CreateHDRSceneTexture(UINT width, UINT height)
     texDesc.Height = height;
     texDesc.MipLevels = 1;
     texDesc.ArraySize = 1;
-    texDesc.Format = DXGI_FORMAT_R16G16B16A16_FLOAT;
+    //texDesc.Format = DXGI_FORMAT_R16G16B16A16_FLOAT;
+    texDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;
     texDesc.SampleDesc.Count = 1;
     texDesc.Usage = D3D11_USAGE_DEFAULT;
     texDesc.BindFlags = D3D11_BIND_RENDER_TARGET | D3D11_BIND_SHADER_RESOURCE;
@@ -1259,7 +1260,8 @@ void RenderClass::Resize(HWND hWnd)
     UINT width = rc.right - rc.left;
     UINT height = rc.bottom - rc.top;
 
-    hr = m_pSwapChain->ResizeBuffers(2, width, height, DXGI_FORMAT_R16G16B16A16_FLOAT, 0);
+    //hr = m_pSwapChain->ResizeBuffers(2, width, height, DXGI_FORMAT_R16G16B16A16_FLOAT, 0);
+    hr = m_pSwapChain->ResizeBuffers(2, width, height, DXGI_FORMAT_R8G8B8A8_UNORM_SRGB, 0);
     if (FAILED(hr))
     {
         MessageBox(nullptr, L"ResizeBuffers failed.", L"Error", MB_OK);
@@ -1364,7 +1366,7 @@ void RenderClass::SetLightBrightness(int index, float value)
 {
     if (index < 0 || index >= 3) return;
     if (value < 0.0f) value = 0.0f;
-    if (value > 5.0) value = 5.0;
+    if (value > 1.0) value = 1.0;
     m_LightBrightness[index] = value;
 }
 
