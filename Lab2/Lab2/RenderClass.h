@@ -79,6 +79,7 @@ public:
             m_pLuminanceTextures[i] = nullptr;
             m_pLuminanceRTV[i] = nullptr;
             m_pLuminanceSRV[i] = nullptr;
+            m_pLuminanceStagingTextures[i] = nullptr;
         }
     }
 

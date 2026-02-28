@@ -393,6 +393,36 @@ HRESULT RenderClass::InitLuminanceResources(UINT width, UINT height)
 {
     HRESULT result;
 
+    for (int i = 0; i < 16; i++)
+    {
+        if (m_pLuminanceTextures[i])
+        {
+            m_pLuminanceTextures[i]->Release();
+            m_pLuminanceTextures[i] = nullptr;
+        }
+        if (m_pLuminanceRTV[i])
+        {
+            m_pLuminanceRTV[i]->Release();
+            m_pLuminanceRTV[i] = nullptr;
+        }
+        if (m_pLuminanceSRV[i])
+        {
+            m_pLuminanceSRV[i]->Release();
+            m_pLuminanceSRV[i] = nullptr;
+        }
+        if (m_pLuminanceStagingTextures[i])
+        {
+            m_pLuminanceStagingTextures[i]->Release();
+            m_pLuminanceStagingTextures[i] = nullptr;
+        }
+    }
+
+    if (m_pLuminanceQuery)
+    {
+        m_pLuminanceQuery->Release();
+        m_pLuminanceQuery = nullptr;
+    }
+
     UINT minDim = std::min(width, height);
     m_LuminanceLevels = 0;
 
@@ -403,54 +433,68 @@ HRESULT RenderClass::InitLuminanceResources(UINT width, UINT height)
         size /= 2;
     }
 
-    result = CompileShader(L"FullScreenVS.vs", &m_pFullScreenVS, nullptr);
-    if (FAILED(result))
-        return result;
-
-    result = CompileShader(L"LuminancePixel.ps", nullptr, &m_pLuminancePS);
-    if (FAILED(result))
-        return result;
-
-    result = CompileShader(L"LuminanceDownsample.ps", nullptr, &m_pDownsamplePS);
-    if (FAILED(result))
-        return result;
-
-
-    D3D11_INPUT_ELEMENT_DESC layout[] =
+    if (!m_pFullScreenVS)
     {
-        { "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D11_INPUT_PER_VERTEX_DATA, 0 },
-        { "TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT, 0, 12, D3D11_INPUT_PER_VERTEX_DATA, 0 }
-    };
+        result = CompileShader(L"FullScreenVS.vs", &m_pFullScreenVS, nullptr);
+        if (FAILED(result))
+            return result;
+    }
 
-    ID3DBlob* pVSBlob = nullptr;
-    result = CompileShader(L"FullScreenVS.vs", nullptr, nullptr, &pVSBlob);
-    if (FAILED(result))
-        return result;
-
-    result = m_pDevice->CreateInputLayout(layout, 2, pVSBlob->GetBufferPointer(), pVSBlob->GetBufferSize(), &m_pFullScreenLayout);
-    pVSBlob->Release();
-    if (FAILED(result))
-        return result;
-
-    FullScreenVertex vertices[] =
+    if (!m_pLuminancePS)
     {
-        { XMFLOAT3(-1.0f, -1.0f, 0.0f), XMFLOAT2(0.0f, 1.0f) },
-        { XMFLOAT3(-1.0f,  1.0f, 0.0f), XMFLOAT2(0.0f, 0.0f) },
-        { XMFLOAT3(1.0f, -1.0f, 0.0f), XMFLOAT2(1.0f, 1.0f) },
-        { XMFLOAT3(1.0f,  1.0f, 0.0f), XMFLOAT2(1.0f, 0.0f) },
-    };
+        result = CompileShader(L"LuminancePixel.ps", nullptr, &m_pLuminancePS);
+        if (FAILED(result))
+            return result;
+    }
 
-    D3D11_BUFFER_DESC bd = {};
-    bd.Usage = D3D11_USAGE_DEFAULT;
-    bd.ByteWidth = sizeof(FullScreenVertex) * 4;
-    bd.BindFlags = D3D11_BIND_VERTEX_BUFFER;
+    if (!m_pDownsamplePS)
+    {
+        result = CompileShader(L"LuminanceDownsample.ps", nullptr, &m_pDownsamplePS);
+        if (FAILED(result))
+            return result;
+    }
 
-    D3D11_SUBRESOURCE_DATA initData = {};
-    initData.pSysMem = vertices;
+    if (!m_pFullScreenLayout)
+    {
+        D3D11_INPUT_ELEMENT_DESC layout[] =
+        {
+            { "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D11_INPUT_PER_VERTEX_DATA, 0 },
+            { "TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT, 0, 12, D3D11_INPUT_PER_VERTEX_DATA, 0 }
+        };
 
-    result = m_pDevice->CreateBuffer(&bd, &initData, &m_pFullScreenQuadVB);
-    if (FAILED(result))
-        return result;
+        ID3DBlob* pVSBlob = nullptr;
+        result = CompileShader(L"FullScreenVS.vs", nullptr, nullptr, &pVSBlob);
+        if (FAILED(result))
+            return result;
+
+        result = m_pDevice->CreateInputLayout(layout, 2, pVSBlob->GetBufferPointer(), pVSBlob->GetBufferSize(), &m_pFullScreenLayout);
+        pVSBlob->Release();
+        if (FAILED(result))
+            return result;
+    }
+
+    if (!m_pFullScreenQuadVB)
+    {
+        FullScreenVertex vertices[] =
+        {
+            { XMFLOAT3(-1.0f, -1.0f, 0.0f), XMFLOAT2(0.0f, 1.0f) },
+            { XMFLOAT3(-1.0f,  1.0f, 0.0f), XMFLOAT2(0.0f, 0.0f) },
+            { XMFLOAT3(1.0f, -1.0f, 0.0f), XMFLOAT2(1.0f, 1.0f) },
+            { XMFLOAT3(1.0f,  1.0f, 0.0f), XMFLOAT2(1.0f, 0.0f) },
+        };
+
+        D3D11_BUFFER_DESC bd = {};
+        bd.Usage = D3D11_USAGE_DEFAULT;
+        bd.ByteWidth = sizeof(FullScreenVertex) * 4;
+        bd.BindFlags = D3D11_BIND_VERTEX_BUFFER;
+
+        D3D11_SUBRESOURCE_DATA initData = {};
+        initData.pSysMem = vertices;
+
+        result = m_pDevice->CreateBuffer(&bd, &initData, &m_pFullScreenQuadVB);
+        if (FAILED(result))
+            return result;
+    }
 
     size = minDim;
     for (int i = 0; i < m_LuminanceLevels; i++)
@@ -505,9 +549,12 @@ HRESULT RenderClass::InitLuminanceResources(UINT width, UINT height)
         size /= 2;
     }
 
-    D3D11_QUERY_DESC queryDesc = {};
-    queryDesc.Query = D3D11_QUERY_EVENT;
-    result = m_pDevice->CreateQuery(&queryDesc, &m_pLuminanceQuery);
+    if (!m_pLuminanceQuery)
+    {
+        D3D11_QUERY_DESC queryDesc = {};
+        queryDesc.Query = D3D11_QUERY_EVENT;
+        result = m_pDevice->CreateQuery(&queryDesc, &m_pLuminanceQuery);
+    }
 
     return result;
 }
@@ -626,11 +673,91 @@ float RenderClass::ReadLuminanceFromGPU()
 
 void RenderClass::Terminate()
 {
+    TerminateBufferShader();
+
+    for (int i = 0; i < 16; i++)
+    {
+        if (m_pLuminanceTextures[i])
+        {
+            m_pLuminanceTextures[i]->Release();
+            m_pLuminanceTextures[i] = nullptr;
+        }
+        if (m_pLuminanceRTV[i])
+        {
+            m_pLuminanceRTV[i]->Release();
+            m_pLuminanceRTV[i] = nullptr;
+        }
+        if (m_pLuminanceSRV[i])
+        {
+            m_pLuminanceSRV[i]->Release();
+            m_pLuminanceSRV[i] = nullptr;
+        }
+        if (m_pLuminanceStagingTextures[i])
+        {
+            m_pLuminanceStagingTextures[i]->Release();
+            m_pLuminanceStagingTextures[i] = nullptr;
+        }
+    }
+
+    if (m_pLuminanceQuery)
+    {
+        if (m_pDeviceContext)
+        {
+            m_pDeviceContext->End(m_pLuminanceQuery);
+            m_pDeviceContext->Flush();
+        }
+        m_pLuminanceQuery->Release();
+        m_pLuminanceQuery = nullptr;
+    }
+
+    if (m_pFullScreenLayout)
+    {
+        m_pFullScreenLayout->Release();
+        m_pFullScreenLayout = nullptr;
+    }
+
+    if (m_pHDRSceneSRV)
+    {
+        m_pHDRSceneSRV->Release();
+        m_pHDRSceneSRV = nullptr;
+    }
+
+    if (m_pHDRSceneRTV)
+    {
+        m_pHDRSceneRTV->Release();
+        m_pHDRSceneRTV = nullptr;
+    }
+
+    if (m_pHDRSceneTexture)
+    {
+        m_pHDRSceneTexture->Release();
+        m_pHDRSceneTexture = nullptr;
+    }
+
+    if (m_pRenderTargetView)
+    {
+        m_pRenderTargetView->Release();
+        m_pRenderTargetView = nullptr;
+    }
+
+    if (m_pDepthView)
+    {
+        m_pDepthView->Release();
+        m_pDepthView = nullptr;
+    }
+
+    if (m_pSwapChain)
+    {
+        m_pSwapChain->Release();
+        m_pSwapChain = nullptr;
+    }
+
     if (m_pDeviceContext)
     {
-        m_pDeviceContext->OMSetRenderTargets(0, nullptr, nullptr);
         m_pDeviceContext->ClearState();
         m_pDeviceContext->Flush();
+        m_pDeviceContext->Release();
+        m_pDeviceContext = nullptr;
     }
 
     if (m_pAnnotation)
@@ -639,79 +766,17 @@ void RenderClass::Terminate()
         m_pAnnotation = nullptr;
     }
 
-    TerminateBufferShader();
-
-    for (int i = 0; i < 16; i++)
+    if (m_pDevice)
     {
-        if (m_pLuminanceTextures[i])
-            m_pLuminanceTextures[i]->Release();
-        if (m_pLuminanceRTV[i])
-            m_pLuminanceRTV[i]->Release();
-        if (m_pLuminanceSRV[i])
-            m_pLuminanceSRV[i]->Release();
-        if (m_pLuminanceStagingTextures[i])
-            m_pLuminanceStagingTextures[i]->Release();
-        m_pLuminanceTextures[i] = nullptr;
-        m_pLuminanceRTV[i] = nullptr;
-        m_pLuminanceSRV[i] = nullptr;
-        m_pLuminanceStagingTextures[i] = nullptr;
-    }
-
-    if (m_pLuminanceQuery) {
-        m_pLuminanceQuery->Release();
-        m_pLuminanceQuery = nullptr;
-    }
-
-    if (m_pFullScreenLayout) {
-        m_pFullScreenLayout->Release();
-        m_pFullScreenLayout = nullptr;
-    }
-
-    if (m_pHDRSceneSRV) {
-        m_pHDRSceneSRV->Release();
-        m_pHDRSceneSRV = nullptr;
-    }
-
-    if (m_pHDRSceneRTV) {
-        m_pHDRSceneRTV->Release();
-        m_pHDRSceneRTV = nullptr;
-    }
-
-    if (m_pHDRSceneTexture) {
-        m_pHDRSceneTexture->Release();
-        m_pHDRSceneTexture = nullptr;
-    }
-
-    if (m_pRenderTargetView) {
-        m_pRenderTargetView->Release();
-        m_pRenderTargetView = nullptr;
-    }
-
-    if (m_pDepthView) {
-        m_pDepthView->Release();
-        m_pDepthView = nullptr;
-    }
-
-    if (m_pSwapChain) {
-        m_pSwapChain->Release();
-        m_pSwapChain = nullptr;
-    }
-
-    if (m_pDeviceContext) {
-        m_pDeviceContext->Release();
-        m_pDeviceContext = nullptr;
-    }
-
-    if (m_pDevice) {
 #ifdef _DEBUG
         ID3D11Debug* pDebug = nullptr;
-        m_pDevice->QueryInterface(IID_PPV_ARGS(&pDebug));
-        if (pDebug) {
+        HRESULT hr = m_pDevice->QueryInterface(__uuidof(ID3D11Debug), (void**)&pDebug);
+        if (SUCCEEDED(hr) && pDebug)
+        {
             pDebug->ReportLiveDeviceObjects(D3D11_RLDO_DETAIL);
             pDebug->Release();
         }
 #endif
-
         m_pDevice->Release();
         m_pDevice = nullptr;
     }
@@ -719,103 +784,127 @@ void RenderClass::Terminate()
 
 void RenderClass::TerminateBufferShader()
 {
-    if (m_pLayout) {
-        m_pLayout->Release();
-        m_pLayout = nullptr;
-    }
-
-    if (m_pPixelShader) {
-        m_pPixelShader->Release();
-        m_pPixelShader = nullptr;
-    }
-
-    if (m_pVertexShader) {
+    if (m_pVertexShader)
+    {
         m_pVertexShader->Release();
         m_pVertexShader = nullptr;
     }
 
-    if (m_pLightPixelShader) {
+    if (m_pPixelShader)
+    {
+        m_pPixelShader->Release();
+        m_pPixelShader = nullptr;
+    }
+
+    if (m_pLightPixelShader)
+    {
         m_pLightPixelShader->Release();
         m_pLightPixelShader = nullptr;
     }
 
-    if (m_pFullScreenVS) {
+    if (m_pFullScreenVS)
+    {
         m_pFullScreenVS->Release();
         m_pFullScreenVS = nullptr;
     }
 
-    if (m_pLuminancePS) {
+    if (m_pLuminancePS)
+    {
         m_pLuminancePS->Release();
         m_pLuminancePS = nullptr;
     }
 
-    if (m_pFullScreenQuadVB) {
-        m_pFullScreenQuadVB->Release();
-        m_pFullScreenQuadVB = nullptr;
-    }
-
-    if (m_pIndexBuffer) {
-        m_pIndexBuffer->Release();
-        m_pIndexBuffer = nullptr;
-    }
-
-    if (m_pVertexBuffer) {
-        m_pVertexBuffer->Release();
-        m_pVertexBuffer = nullptr;
-    }
-
-    if (m_pModelBuffer) {
-        m_pModelBuffer->Release();
-        m_pModelBuffer = nullptr;
-    }
-
-    if (m_pVPBuffer) {
-        m_pVPBuffer->Release();
-        m_pVPBuffer = nullptr;
-    }
-
-    if (m_pTextureView) {
-        m_pTextureView->Release();
-        m_pTextureView = nullptr;
-    }
-
-    if (m_pNormalMapView) {
-        m_pNormalMapView->Release();
-        m_pNormalMapView = nullptr;
-    }
-
-    if (m_pSamplerState) {
-        m_pSamplerState->Release();
-        m_pSamplerState = nullptr;
-    }
-
-    if (m_pLightBuffer) {
-        m_pLightBuffer->Release();
-        m_pLightBuffer = nullptr;
-    }
-
-    if (m_pColorBuffer) {
-        m_pColorBuffer->Release();
-        m_pColorBuffer = nullptr;
-    }
-
-    if (m_pToneMapCB) {
-        m_pToneMapCB->Release();
-        m_pToneMapCB = nullptr;
-    }
-
-    if (m_pToneMapPS) {
-        m_pToneMapPS->Release();
-        m_pToneMapPS = nullptr;
-    }
-
-
-    if (m_pDownsamplePS) {
+    if (m_pDownsamplePS)
+    {
         m_pDownsamplePS->Release();
         m_pDownsamplePS = nullptr;
     }
 
+    if (m_pToneMapPS)
+    {
+        m_pToneMapPS->Release();
+        m_pToneMapPS = nullptr;
+    }
+
+    if (m_pLayout)
+    {
+        m_pLayout->Release();
+        m_pLayout = nullptr;
+    }
+
+    if (m_pFullScreenLayout)
+    {
+        m_pFullScreenLayout->Release();
+        m_pFullScreenLayout = nullptr;
+    }
+
+    if (m_pVertexBuffer)
+    {
+        m_pVertexBuffer->Release();
+        m_pVertexBuffer = nullptr;
+    }
+
+    if (m_pIndexBuffer)
+    {
+        m_pIndexBuffer->Release();
+        m_pIndexBuffer = nullptr;
+    }
+
+    if (m_pFullScreenQuadVB)
+    {
+        m_pFullScreenQuadVB->Release();
+        m_pFullScreenQuadVB = nullptr;
+    }
+
+    if (m_pModelBuffer)
+    {
+        m_pModelBuffer->Release();
+        m_pModelBuffer = nullptr;
+    }
+
+    if (m_pVPBuffer)
+    {
+        m_pVPBuffer->Release();
+        m_pVPBuffer = nullptr;
+    }
+
+    if (m_pLightBuffer)
+    {
+        m_pLightBuffer->Release();
+        m_pLightBuffer = nullptr;
+    }
+
+    if (m_pColorBuffer)
+    {
+        m_pColorBuffer->Release();
+        m_pColorBuffer = nullptr;
+    }
+
+    if (m_pToneMapCB)
+    {
+        m_pToneMapCB->Release();
+        m_pToneMapCB = nullptr;
+    }
+
+    if (m_pTextureView)
+    {
+        m_pTextureView->Release();
+        m_pTextureView = nullptr;
+    }
+
+    if (m_pNormalMapView)
+    {
+        m_pNormalMapView->Release();
+        m_pNormalMapView = nullptr;
+    }
+
+    if (m_pSamplerState)
+    {
+        m_pSamplerState->Release();
+        m_pSamplerState = nullptr;
+    }
 }
+
 
 std::wstring Extension(const std::wstring& path)
 {
@@ -990,11 +1079,11 @@ void RenderClass::Render()
     }
 
     {
-        CalculateAverageLuminance();
-        m_CurrentLuminance = ReadLuminanceFromGPU();
+        ScopedEvent evt(m_pAnnotation, L"Apply tone mapping");
         ApplyToneMapping();
+    }
 
-
+    {
         ScopedEvent evt(m_pAnnotation, L"Present");
         m_pSwapChain->Present(1, 0);
     }
@@ -1210,8 +1299,7 @@ HRESULT RenderClass::CreateHDRSceneTexture(UINT width, UINT height)
     texDesc.Height = height;
     texDesc.MipLevels = 1;
     texDesc.ArraySize = 1;
-    //texDesc.Format = DXGI_FORMAT_R16G16B16A16_FLOAT;
-    texDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;
+    texDesc.Format = DXGI_FORMAT_R16G16B16A16_FLOAT;
     texDesc.SampleDesc.Count = 1;
     texDesc.Usage = D3D11_USAGE_DEFAULT;
     texDesc.BindFlags = D3D11_BIND_RENDER_TARGET | D3D11_BIND_SHADER_RESOURCE;
@@ -1253,6 +1341,24 @@ void RenderClass::Resize(HWND hWnd)
         m_pDepthView = nullptr;
     }
 
+    if (m_pHDRSceneSRV)
+    {
+        m_pHDRSceneSRV->Release();
+        m_pHDRSceneSRV = nullptr;
+    }
+
+    if (m_pHDRSceneRTV)
+    {
+        m_pHDRSceneRTV->Release();
+        m_pHDRSceneRTV = nullptr;
+    }
+
+    if (m_pHDRSceneTexture)
+    {
+        m_pHDRSceneTexture->Release();
+        m_pHDRSceneTexture = nullptr;
+    }
+
     HRESULT hr;
 
     RECT rc;
@@ -1260,7 +1366,6 @@ void RenderClass::Resize(HWND hWnd)
     UINT width = rc.right - rc.left;
     UINT height = rc.bottom - rc.top;
 
-    //hr = m_pSwapChain->ResizeBuffers(2, width, height, DXGI_FORMAT_R16G16B16A16_FLOAT, 0);
     hr = m_pSwapChain->ResizeBuffers(2, width, height, DXGI_FORMAT_R8G8B8A8_UNORM_SRGB, 0);
     if (FAILED(hr))
     {
@@ -1275,9 +1380,19 @@ void RenderClass::Resize(HWND hWnd)
         return;
     }
 
-    CreateHDRSceneTexture(width, height);
+    hr = CreateHDRSceneTexture(width, height);
+    if (FAILED(hr))
+    {
+        OutputDebugString(_T("CreateHDRSceneTexture failed.\n"));
+        return;
+    }
 
-    InitLuminanceResources(width, height);
+    hr = InitLuminanceResources(width, height);
+    if (FAILED(hr))
+    {
+        OutputDebugString(_T("InitLuminanceResources failed.\n"));
+        return;
+    }
 
     m_pDeviceContext->OMSetRenderTargets(1, &m_pRenderTargetView, m_pDepthView);
 
