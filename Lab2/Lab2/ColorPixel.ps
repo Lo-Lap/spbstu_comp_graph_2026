@@ -1,0 +1,60 @@
+Texture2D diffuseTexture : register(t0);
+Texture2D normalMap : register(t1);
+SamplerState samplerState : register(s0);
+
+struct PointLight
+{
+    float3 Position;
+    float Range;
+    float3 Color;
+    float Intensity;
+};
+
+cbuffer LightBuffer : register(b2)
+{
+ 
+    PointLight lights[3];
+};
+
+struct PS_INPUT
+{
+    float4 Pos : SV_POSITION;
+    float3 WorldPos : TEXCOORD0;
+    float3 Normal : TEXCOORD1;
+    float2 TexCoord : TEXCOORD2;
+    float3 Tangent : TEXCOORD3;
+    float3 Bitangent : TEXCOORD4;
+    float3 CameraPos : TEXCOORD5;
+};
+
+float3 CalculateNormalFromMap(float3 normal, float3 tangent, float3 bitangent, float2 texCoord)
+{
+    float3 normalFromMap = normalMap.Sample(samplerState, texCoord).xyz;
+    normalFromMap = normalize(normalFromMap * 2.0f - 1.0f);
+    float3x3 TBN = float3x3(tangent, bitangent, normal);
+    return normalize(mul(normalFromMap, TBN));
+}
+
+float4 main(PS_INPUT input) : SV_Target
+{
+    float3 tangent = normalize(input.Tangent);
+    float3 bitangent = normalize(input.Bitangent);
+    float3 P = input.WorldPos;
+    float3 N = CalculateNormalFromMap(input.Normal, tangent, bitangent, input.TexCoord);
+    float3 lightColor = float3(0.0f, 0.0f, 0.0f);
+    for(int i=0;i<3;i++)
+    {
+        float3 Lvec = lights[i].Position - P;
+        float dist = length(Lvec);
+        float3 L = Lvec / max(dist, 1e-4);
+        float NdotL = saturate(dot(N, L));
+        float x = dist / lights[i].Range;
+        float falloff = 1.0 - smoothstep(0.9, 1.0, x);
+        falloff = pow(falloff, 2.0);
+        float3 contrib = lights[i].Color * lights[i].Intensity * NdotL * falloff;
+        lightColor  += contrib;
+    }
+
+    return float4(lightColor, 1.0f);
+ 
+}
