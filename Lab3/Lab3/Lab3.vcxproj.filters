@@ -22,6 +22,9 @@
     <Filter Include="imgui\backend">
       <UniqueIdentifier>{44e9b4b2-2b1b-44f7-a08e-2df6a693e184}</UniqueIdentifier>
     </Filter>
+    <Filter Include="cubemaps">
+      <UniqueIdentifier>{afc9b714-8832-4731-b18b-680227aa26ae}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="framework.h">
@@ -108,6 +111,21 @@
     <Image Include="Lab3.ico">
       <Filter>Файлы ресурсов</Filter>
     </Image>
+    <Image Include="cubemaps\church_box.dds">
+      <Filter>cubemaps</Filter>
+    </Image>
+    <Image Include="cubemaps\qwantani_box.dds">
+      <Filter>cubemaps</Filter>
+    </Image>
+    <Image Include="cubemaps\shanghai_box.dds">
+      <Filter>cubemaps</Filter>
+    </Image>
+    <Image Include="cubemaps\sunset_box.dds">
+      <Filter>cubemaps</Filter>
+    </Image>
+    <Image Include="cubemaps\sunset_1024_box.dds">
+      <Filter>cubemaps</Filter>
+    </Image>
   </ItemGroup>
   <ItemGroup>
     <CopyFileToFolders Include="ColorPixel.ps">
@@ -147,6 +165,12 @@
     </None>
     <None Include="imgui\imgui.vcxproj.user">
       <Filter>imgui</Filter>
+    </None>
+    <None Include="SkyVertex.vs">
+      <Filter>shader</Filter>
+    </None>
+    <None Include="SkyPixel.ps">
+      <Filter>shader</Filter>
     </None>
   </ItemGroup>
 </Project>

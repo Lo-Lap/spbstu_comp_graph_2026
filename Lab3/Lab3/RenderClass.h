@@ -38,6 +38,12 @@ public:
         m_pLightPixelShader(nullptr),
         m_pNormalMapView(nullptr),
 
+        m_pEnvironmentSRV(nullptr),
+        m_pSkyVertexShader(nullptr),
+        m_pSkyPixelShader(nullptr),
+        m_pSkyRasterState(nullptr),
+        m_pSkyDepthState(nullptr),
+
         m_CameraPosition(0.0f, 0.0f, -5.0f),
         m_CameraSpeed(0.1f),
         m_LRAngle(0.0f),
@@ -80,6 +86,7 @@ public:
             m_pLuminanceTextures[i] = nullptr;
             m_pLuminanceRTV[i] = nullptr;
             m_pLuminanceSRV[i] = nullptr;
+            m_pLuminanceStagingTextures[i] = nullptr;
         }
     }
 
@@ -203,6 +210,12 @@ private:
     ID3D11PixelShader* m_pDownsamplePS;
 
     UINT m_indexCount;
+
+    ID3D11ShaderResourceView* m_pEnvironmentSRV;
+    ID3D11VertexShader* m_pSkyVertexShader;
+    ID3D11PixelShader* m_pSkyPixelShader;
+    ID3D11RasterizerState* m_pSkyRasterState;
+    ID3D11DepthStencilState* m_pSkyDepthState;
 
 };
 #endif

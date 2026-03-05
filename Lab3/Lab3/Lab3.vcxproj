@@ -179,6 +179,11 @@
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">false</ExcludedFromBuild>
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">false</ExcludedFromBuild>
     </CopyFileToFolders>
+    <Image Include="cubemaps\church_box.dds" />
+    <Image Include="cubemaps\qwantani_box.dds" />
+    <Image Include="cubemaps\shanghai_box.dds" />
+    <Image Include="cubemaps\sunset_1024_box.dds" />
+    <Image Include="cubemaps\sunset_box.dds" />
     <Image Include="Lab3.ico" />
     <Image Include="small.ico" />
   </ItemGroup>
@@ -229,6 +234,8 @@
     <None Include="imgui\imgui.vcxproj" />
     <None Include="imgui\imgui.vcxproj.filters" />
     <None Include="imgui\imgui.vcxproj.user" />
+    <None Include="SkyPixel.ps" />
+    <None Include="SkyVertex.vs" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

@@ -41,6 +41,9 @@ float4 main(PS_INPUT input) : SV_Target
     float exposure = GetExposure();
     float3 toneMapped = Uncharted2Tonemap(color * exposure);
     float3 whiteScale = 1.0f / Uncharted2Tonemap(float3(WhiteLumen, WhiteLumen, WhiteLumen));
-    float3 ldr = saturate(pow(abs(toneMapped * whiteScale), 1.0f / 2.2f));
+    // float3 ldr = saturate(pow(abs(toneMapped * whiteScale), 1.0f / 2.2f));
+    // return float4(ldr, 1.0f);
+
+    float3 ldr = saturate(toneMapped * whiteScale);
     return float4(ldr, 1.0f);
 }
