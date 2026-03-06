@@ -55,6 +55,11 @@ struct ToneMapParamsCB
     XMFLOAT4 Params;
 };
 
+struct MaterialParamsCB
+{
+    XMFLOAT4 Surface; 
+};
+
 
 HRESULT RenderClass::Init(HWND hWnd, WCHAR szTitle[], WCHAR szWindowClass[])
 {
@@ -331,12 +336,12 @@ HRESULT RenderClass::InitBufferShader()
     const float PI = 3.14159265358979323846f;
     for (int i = 0; i <= stacks; ++i)
     {
-        float v = (float)i / stacks; // 0..1
-        float phi = v * PI; // 0..PI
+        float v = (float)i / stacks;
+        float phi = v * PI; 
         for (int j = 0; j <= slices; ++j)
         {
-            float u = (float)j / slices; // 0..1
-            float theta = u * 2.0f * PI; // 0..2PI
+            float u = (float)j / slices;
+            float theta = u * 2.0f * PI;
             float x = std::sin(phi) * std::cos(theta);
             float y = std::cos(phi);
             float z = std::sin(phi) * std::sin(theta);
@@ -429,6 +434,15 @@ HRESULT RenderClass::InitBufferShader()
     if (FAILED(result))
         return result;
 
+    D3D11_BUFFER_DESC materialBufferDesc = {};
+    materialBufferDesc.Usage = D3D11_USAGE_DEFAULT;
+    materialBufferDesc.ByteWidth = sizeof(MaterialParamsCB);
+    materialBufferDesc.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
+    materialBufferDesc.CPUAccessFlags = 0;
+    result = m_pDevice->CreateBuffer(&materialBufferDesc, nullptr, &m_pMaterialBuffer);
+    if (FAILED(result))
+        return result;
+
     result = DirectX::CreateDDSTextureFromFile(m_pDevice, L"cat.dds", nullptr, &m_pTextureView);
     if (FAILED(result))
         return result;
@@ -437,7 +451,19 @@ HRESULT RenderClass::InitBufferShader()
     if (FAILED(result))
         return result;
 
-    result = DirectX::CreateDDSTextureFromFile(m_pDevice, L"cubemaps/shanghai_2048_box.dds", nullptr, &m_pEnvironmentSRV);
+    //result = DirectX::CreateDDSTextureFromFile(m_pDevice, L"cubemaps/shanghai_2048_box.dds", nullptr, &m_pEnvironmentSRV);
+    result = DirectX::CreateDDSTextureFromFileEx(
+        m_pDevice,
+        L"cubemaps/shanghai_2048_box.dds",
+        0,
+        D3D11_USAGE_DEFAULT,
+        D3D11_BIND_SHADER_RESOURCE,
+        0,
+        0,
+        DirectX::DDS_LOADER_FORCE_SRGB, 
+        nullptr,
+        &m_pEnvironmentSRV
+    );
     if (FAILED(result))
         return result;
 
@@ -957,6 +983,12 @@ void RenderClass::TerminateBufferShader()
         m_pLightBuffer = nullptr;
     }
 
+    if (m_pMaterialBuffer)
+    {
+        m_pMaterialBuffer->Release();
+        m_pMaterialBuffer = nullptr;
+    }
+
     if (m_pColorBuffer)
     {
         m_pColorBuffer->Release();
@@ -1295,7 +1327,7 @@ void RenderClass::SetMVPBuffer()
     PointLight lights[3];
 
     const float range = 1.75f;
-    float r = 2.5f;
+    float r = 1.5f;
 
     // red (pink)
     lights[0].Position = XMFLOAT3(0.0f, 0.5f, -r);
@@ -1329,6 +1361,11 @@ void RenderClass::SetMVPBuffer()
         m_pDeviceContext->Unmap(m_pLightBuffer, 0);
     }
     m_pDeviceContext->PSSetConstantBuffers(2, 1, &m_pLightBuffer);
+
+    MaterialParamsCB materialParams = {};
+    materialParams.Surface = XMFLOAT4(0.0f, 0.6f, 1.0f, 1.0f);
+    m_pDeviceContext->UpdateSubresource(m_pMaterialBuffer, 0, nullptr, &materialParams, 0, 0);
+    m_pDeviceContext->PSSetConstantBuffers(3, 1, &m_pMaterialBuffer);
 
 
     UINT stride = sizeof(CubeVertex);
@@ -1665,3 +1702,5 @@ void RenderClass::ApplyToneMapping()
     ID3D11ShaderResourceView* nullSRV = nullptr;
     m_pDeviceContext->PSSetShaderResources(0, 1, &nullSRV);
 }
+
+

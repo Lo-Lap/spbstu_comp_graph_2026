@@ -37,6 +37,7 @@ public:
         m_pLightBuffer(nullptr),
         m_pLightPixelShader(nullptr),
         m_pNormalMapView(nullptr),
+        m_pMaterialBuffer(nullptr),
 
         m_pEnvironmentSRV(nullptr),
         m_pSkyVertexShader(nullptr),
@@ -154,6 +155,7 @@ private:
     ID3D11Buffer* m_pColorBuffer;
 
     ID3D11Buffer* m_pLightBuffer;
+    ID3D11Buffer* m_pMaterialBuffer;
     ID3D11PixelShader* m_pLightPixelShader;
 
     float m_CubeAngle = 0.0f;
