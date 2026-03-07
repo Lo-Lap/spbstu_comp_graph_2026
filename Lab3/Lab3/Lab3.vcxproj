@@ -186,6 +186,16 @@
     <Image Include="cubemaps\sunset_box.dds" />
     <Image Include="Lab3.ico" />
     <Image Include="small.ico" />
+    <Image Include="textures\bark_brown_02_diff_4k.dds" />
+    <Image Include="textures\blue_metal_plate_diff_4k.dds" />
+    <Image Include="textures\fabric_leather_02_diff_4k.dds" />
+    <Image Include="textures\gladkaya_kozha.dds" />
+    <Image Include="textures\gladkie_kamushki.dds" />
+    <Image Include="textures\kameshki.dds" />
+    <Image Include="textures\KORA_DEREVA.dds" />
+    <Image Include="textures\old_stone_wall_diff_4k.dds" />
+    <Image Include="textures\sinushnaya_zhelezka.dds" />
+    <Image Include="textures\strannaya_kozha.dds" />
   </ItemGroup>
   <ItemGroup>
     <CopyFileToFolders Include="ColorPixel.ps">

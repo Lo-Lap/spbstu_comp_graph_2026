@@ -87,7 +87,7 @@ public:
         m_MaterialRoughness(0.6f),
         m_MaterialAO(1.0f),
         m_NormalStrength(1.0f),
-        m_MaterialColor(1.0f, 0.0f, 0.0f)
+        m_MaterialColor(1.0f, 1.0f, 1.0f)
 
     {
         for (int i = 0; i < kSphereCount; ++i)
@@ -149,8 +149,8 @@ private:
     XMFLOAT3 m_LightColors[3] =
     {
          XMFLOAT3(1.0f, 1.0f, 1.0f),
-         XMFLOAT3(0.0f, 1.0f, 0.0f),
-         XMFLOAT3(0.0f, 0.0f, 1.0f)
+         XMFLOAT3(1.0f, 1.0f, 1.0f),
+         XMFLOAT3(1.0f, 1.0f, 1.0f)
     };
 
 

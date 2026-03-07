@@ -25,6 +25,9 @@
     <Filter Include="imgui\backends">
       <UniqueIdentifier>{44e9b4b2-2b1b-44f7-a08e-2df6a693e184}</UniqueIdentifier>
     </Filter>
+    <Filter Include="textures">
+      <UniqueIdentifier>{fcdc6016-0d18-4369-9483-db0f5bc1dc76}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="framework.h">
@@ -125,6 +128,36 @@
     </Image>
     <Image Include="cubemaps\sunset_1024_box.dds">
       <Filter>cubemaps</Filter>
+    </Image>
+    <Image Include="textures\bark_brown_02_diff_4k.dds">
+      <Filter>textures</Filter>
+    </Image>
+    <Image Include="textures\blue_metal_plate_diff_4k.dds">
+      <Filter>textures</Filter>
+    </Image>
+    <Image Include="textures\fabric_leather_02_diff_4k.dds">
+      <Filter>textures</Filter>
+    </Image>
+    <Image Include="textures\gladkaya_kozha.dds">
+      <Filter>textures</Filter>
+    </Image>
+    <Image Include="textures\gladkie_kamushki.dds">
+      <Filter>textures</Filter>
+    </Image>
+    <Image Include="textures\kameshki.dds">
+      <Filter>textures</Filter>
+    </Image>
+    <Image Include="textures\KORA_DEREVA.dds">
+      <Filter>textures</Filter>
+    </Image>
+    <Image Include="textures\old_stone_wall_diff_4k.dds">
+      <Filter>textures</Filter>
+    </Image>
+    <Image Include="textures\sinushnaya_zhelezka.dds">
+      <Filter>textures</Filter>
+    </Image>
+    <Image Include="textures\strannaya_kozha.dds">
+      <Filter>textures</Filter>
     </Image>
   </ItemGroup>
   <ItemGroup>

@@ -357,7 +357,7 @@ HRESULT RenderClass::InitBufferShader()
     result = m_pDevice->CreateBuffer(&materialBufferDesc, nullptr, &m_pMaterialBuffer);
     if (FAILED(result))
         return result;
-
+    /*
     const wchar_t* albedoFiles[kSphereCount] =
     {
          L"cat.dds",
@@ -371,6 +371,22 @@ HRESULT RenderClass::InitBufferShader()
          L"cube_normal.dds",
          L"cube_normal.dds",
          L"cube_normal.dds"
+    };
+    */
+    /**/
+    const wchar_t* albedoFiles[kSphereCount] =
+    {
+         L"textures/bark_brown_02_diff_4k.dds",
+         L"textures/blue_metal_plate_diff_4k.dds",
+         L"textures/fabric_leather_02_diff_4k.dds",
+         L"textures/old_stone_wall_diff_4k.dds"
+    };
+    const wchar_t* normalFiles[kSphereCount] =
+    {
+         L"textures/KORA_DEREVA.dds",
+         L"textures/sinushnaya_zhelezka.dds",
+         L"textures/gladkaya_kozha.dds",
+         L"textures/kameshki.dds"
     };
     for (int i = 0; i < kSphereCount; ++i)
     {
