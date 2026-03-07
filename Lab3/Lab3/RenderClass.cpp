@@ -443,13 +443,13 @@ HRESULT RenderClass::InitBufferShader()
     if (FAILED(result))
         return result;
 
-    result = DirectX::CreateDDSTextureFromFile(m_pDevice, L"cat.dds", nullptr, &m_pTextureView);
-    if (FAILED(result))
-        return result;
+    //result = DirectX::CreateDDSTextureFromFile(m_pDevice, L"cat.dds", nullptr, &m_pTextureView);
+    //if (FAILED(result))
+    //    return result;
 
-    result = DirectX::CreateDDSTextureFromFile(m_pDevice, L"cube_normal.dds", nullptr, &m_pNormalMapView);
-    if (FAILED(result))
-        return result;
+    //result = DirectX::CreateDDSTextureFromFile(m_pDevice, L"cube_normal.dds", nullptr, &m_pNormalMapView);
+    //if (FAILED(result))
+    //    return result;
 
     //result = DirectX::CreateDDSTextureFromFile(m_pDevice, L"cubemaps/shanghai_2048_box.dds", nullptr, &m_pEnvironmentSRV);
     result = DirectX::CreateDDSTextureFromFileEx(
@@ -1326,14 +1326,17 @@ void RenderClass::SetMVPBuffer()
 
     PointLight lights[3];
 
-    const float range = 1.75f;
+    //const float range = 1.75f;
+    const float range = 6.0f;
+    const float baseIntensity = 80.0f;
     float r = 1.5f;
 
     // red (pink)
     lights[0].Position = XMFLOAT3(0.0f, 0.5f, -r);
     lights[0].Range = range;
     //lights[0].Color = XMFLOAT3(1.0f, 0.35f, 0.65f);
-    lights[0].Color = XMFLOAT3(1.0f, 0.0f, 0.0f);
+    //lights[0].Color = XMFLOAT3(1.0f, 0.0f, 0.0f);
+    lights[0].Color = XMFLOAT3(1.0f, 1.0f, 1.0f);
 
     // green (cyan)
     lights[1].Position = XMFLOAT3(-0.43f, -0.25f, -r);
@@ -1349,9 +1352,9 @@ void RenderClass::SetMVPBuffer()
     lights[2].Color = XMFLOAT3(0.0f, 0.0f, 1.0f);
     //lights[2].Color = XMFLOAT3(1.0f, 0.0f, 0.0f);
 
-    lights[0].Intensity = m_LightBrightness[0];
-    lights[1].Intensity = m_LightBrightness[1];
-    lights[2].Intensity = m_LightBrightness[2];
+    lights[0].Intensity = m_LightBrightness[0] * baseIntensity;
+    lights[1].Intensity = m_LightBrightness[1] * baseIntensity;
+    lights[2].Intensity = m_LightBrightness[2] * baseIntensity;
 
     D3D11_MAPPED_SUBRESOURCE mappedResourceLight;
     hr = m_pDeviceContext->Map(m_pLightBuffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &mappedResourceLight);
@@ -1363,7 +1366,12 @@ void RenderClass::SetMVPBuffer()
     m_pDeviceContext->PSSetConstantBuffers(2, 1, &m_pLightBuffer);
 
     MaterialParamsCB materialParams = {};
-    materialParams.Surface = XMFLOAT4(0.0f, 0.6f, 1.0f, 1.0f);
+    // воздушный шарик (хехе)
+    //materialParams.Surface = XMFLOAT4(0.05f, 0.15f, 1.0f, 1.0f);
+    // пластик
+     materialParams.Surface = XMFLOAT4(1.0f, 0.6f, 1.0f, 1.0f);
+    // металл
+    //materialParams.Surface = XMFLOAT4(1.0f, 0.25f, 1.0f, 1.0f);
     m_pDeviceContext->UpdateSubresource(m_pMaterialBuffer, 0, nullptr, &materialParams, 0, 0);
     m_pDeviceContext->PSSetConstantBuffers(3, 1, &m_pMaterialBuffer);
 
