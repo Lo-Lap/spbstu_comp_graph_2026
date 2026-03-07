@@ -6,6 +6,9 @@
 #include <d3d11_1.h>
 #include <DirectXMath.h>
 #include <commctrl.h>
+#include "imgui.h"
+#include "backends/imgui_impl_win32.h"
+#include "backends/imgui_impl_dx11.h"
 #pragma comment(lib, "comctl32.lib")
 
 using namespace DirectX;
@@ -80,7 +83,14 @@ public:
         m_LastFrameTime(0),
         m_EyeAdaptationTime(2.0f),
         m_pDownsamplePS(nullptr),
-        m_indexCount(0)
+        m_indexCount(0),
+
+        m_MaterialMetalness(0.0f),
+        m_MaterialRoughness(0.6f),
+        m_MaterialAO(1.0f),
+        m_NormalStrength(1.0f),
+        m_MaterialColor(1.0f, 0.0f, 0.0f)
+
     {
         for (int i = 0; i < 16; i++)
         {
@@ -120,6 +130,10 @@ public:
     void CalculateAverageLuminance();
     float ReadLuminanceFromGPU();
     void ApplyToneMapping();
+
+    void InitImGui(HWND hWnd);
+    void ShutdownImGui();
+    void RenderImGui();
 
 private:
 
@@ -218,6 +232,12 @@ private:
     ID3D11PixelShader* m_pSkyPixelShader;
     ID3D11RasterizerState* m_pSkyRasterState;
     ID3D11DepthStencilState* m_pSkyDepthState;
+
+    float m_MaterialMetalness;
+    float m_MaterialRoughness;
+    float m_MaterialAO;
+    float m_NormalStrength;
+    XMFLOAT3 m_MaterialColor;
 
 };
 #endif

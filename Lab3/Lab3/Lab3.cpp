@@ -4,6 +4,8 @@
 #include "framework.h"
 #include "Lab3.h"
 #include "RenderClass.h"
+#include "imgui.h"
+#include "backends/imgui_impl_win32.h"
 
 #include <windowsx.h>
 
@@ -12,6 +14,8 @@
 
 WCHAR szTitle[MAX_LOADSTRING] = L"Lab3 Group: Babakhina, Lapina, Lips";
 WCHAR szWindowClass[MAX_LOADSTRING] = L"Lab3Class";
+
+extern LRESULT ImGui_ImplWin32_WndProcHandler(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
 
 ATOM                MyRegisterClass(HINSTANCE hInstance);
 BOOL                InitInstance(HINSTANCE, int);
@@ -103,6 +107,12 @@ BOOL InitInstance(HINSTANCE hInstance, int nCmdShow)
 
 LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 {
+    if (ImGui::GetCurrentContext() != nullptr)
+    {
+        if (ImGui_ImplWin32_WndProcHandler(hWnd, message, wParam, lParam))
+            return true;
+    }
+
     switch (message)
     {
     case WM_COMMAND:
@@ -185,6 +195,12 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
         return 0;
 
     case WM_MOUSEMOVE:
+        if (ImGui::GetCurrentContext() != nullptr)
+        {
+            ImGuiIO& io = ImGui::GetIO();
+            if (io.WantCaptureMouse)
+                return 0;
+        }
         if (g_Render != nullptr)
         {
             g_Render->MouseMoved(GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam), hWnd);

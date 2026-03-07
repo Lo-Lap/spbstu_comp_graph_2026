@@ -19,11 +19,11 @@
     <Filter Include="imgui">
       <UniqueIdentifier>{6aab333c-9ed4-4601-afa3-9b9788ecae3f}</UniqueIdentifier>
     </Filter>
-    <Filter Include="imgui\backend">
-      <UniqueIdentifier>{44e9b4b2-2b1b-44f7-a08e-2df6a693e184}</UniqueIdentifier>
-    </Filter>
     <Filter Include="cubemaps">
       <UniqueIdentifier>{afc9b714-8832-4731-b18b-680227aa26ae}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="imgui\backends">
+      <UniqueIdentifier>{44e9b4b2-2b1b-44f7-a08e-2df6a693e184}</UniqueIdentifier>
     </Filter>
   </ItemGroup>
   <ItemGroup>
@@ -46,10 +46,10 @@
       <Filter>Файлы заголовков</Filter>
     </ClInclude>
     <ClInclude Include="imgui\backends\imgui_impl_dx11.h">
-      <Filter>imgui\backend</Filter>
+      <Filter>imgui\backends</Filter>
     </ClInclude>
     <ClInclude Include="imgui\backends\imgui_impl_win32.h">
-      <Filter>imgui\backend</Filter>
+      <Filter>imgui\backends</Filter>
     </ClInclude>
     <ClInclude Include="imgui\imconfig.h">
       <Filter>imgui</Filter>
@@ -81,10 +81,10 @@
       <Filter>Исходные файлы</Filter>
     </ClCompile>
     <ClCompile Include="imgui\backends\imgui_impl_dx11.cpp">
-      <Filter>imgui\backend</Filter>
+      <Filter>imgui\backends</Filter>
     </ClCompile>
     <ClCompile Include="imgui\backends\imgui_impl_win32.cpp">
-      <Filter>imgui\backend</Filter>
+      <Filter>imgui\backends</Filter>
     </ClCompile>
     <ClCompile Include="imgui\imgui.cpp">
       <Filter>imgui</Filter>

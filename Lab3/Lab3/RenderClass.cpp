@@ -57,7 +57,8 @@ struct ToneMapParamsCB
 
 struct MaterialParamsCB
 {
-    XMFLOAT4 Surface; 
+    XMFLOAT4 Surface;
+    XMFLOAT4 Albedo;
 };
 
 
@@ -211,6 +212,8 @@ HRESULT RenderClass::Init(HWND hWnd, WCHAR szTitle[], WCHAR szWindowClass[])
     {
         Terminate();
     }
+
+    InitImGui(hWnd);
 
     return result;
 }
@@ -782,6 +785,11 @@ float RenderClass::ReadLuminanceFromGPU()
 
 void RenderClass::Terminate()
 {
+    if (ImGui::GetCurrentContext() != nullptr)
+    {
+        ShutdownImGui();
+    }
+
     TerminateBufferShader();
 
     for (int i = 0; i < 16; i++)
@@ -1230,6 +1238,11 @@ void RenderClass::Render()
     }
 
     {
+        ScopedEvent evt(m_pAnnotation, L"ImGui");
+        RenderImGui();
+    }
+
+    {
         ScopedEvent evt(m_pAnnotation, L"Present");
         m_pSwapChain->Present(1, 0);
     }
@@ -1369,12 +1382,26 @@ void RenderClass::SetMVPBuffer()
     // воздушный шарик (хехе)
     //materialParams.Surface = XMFLOAT4(0.05f, 0.15f, 1.0f, 1.0f);
     // пластик
-     materialParams.Surface = XMFLOAT4(1.0f, 0.6f, 1.0f, 1.0f);
+    //materialParams.Surface = XMFLOAT4(1.0f, 0.6f, 1.0f, 1.0f);
     // металл
     //materialParams.Surface = XMFLOAT4(1.0f, 0.25f, 1.0f, 1.0f);
+    
+    materialParams.Surface = XMFLOAT4(
+        m_MaterialMetalness,
+        m_MaterialRoughness,
+        m_MaterialAO,
+        m_NormalStrength
+    );
+
+    materialParams.Albedo = XMFLOAT4(
+        m_MaterialColor.x,
+        m_MaterialColor.y,
+        m_MaterialColor.z,
+        1.0f
+    );
+
     m_pDeviceContext->UpdateSubresource(m_pMaterialBuffer, 0, nullptr, &materialParams, 0, 0);
     m_pDeviceContext->PSSetConstantBuffers(3, 1, &m_pMaterialBuffer);
-
 
     UINT stride = sizeof(CubeVertex);
     UINT offset = 0;
@@ -1709,6 +1736,36 @@ void RenderClass::ApplyToneMapping()
     m_pDeviceContext->Draw(4, 0);
     ID3D11ShaderResourceView* nullSRV = nullptr;
     m_pDeviceContext->PSSetShaderResources(0, 1, &nullSRV);
+}
+
+void RenderClass::InitImGui(HWND hWnd)
+{
+    IMGUI_CHECKVERSION();
+    ImGui::CreateContext();
+    ImGui::StyleColorsDark();
+    ImGui_ImplWin32_Init(hWnd);
+    ImGui_ImplDX11_Init(m_pDevice, m_pDeviceContext);
+}
+
+void RenderClass::ShutdownImGui()
+{
+    ImGui_ImplDX11_Shutdown();
+    ImGui_ImplWin32_Shutdown();
+    ImGui::DestroyContext();
+}
+
+void RenderClass::RenderImGui()
+{
+    ImGui_ImplDX11_NewFrame();
+    ImGui_ImplWin32_NewFrame();
+    ImGui::NewFrame();
+    ImGui::Begin("Material");
+    ImGui::SliderFloat("Metalness", &m_MaterialMetalness, 0.0f, 1.0f);
+    ImGui::SliderFloat("Roughness", &m_MaterialRoughness, 0.045f, 1.0f);
+    ImGui::ColorEdit3("Color", &m_MaterialColor.x);
+    ImGui::End();
+    ImGui::Render();
+    ImGui_ImplDX11_RenderDrawData(ImGui::GetDrawData());
 }
 
 
