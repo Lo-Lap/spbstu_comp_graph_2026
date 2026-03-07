@@ -85,14 +85,18 @@ float4 main(PS_INPUT input) : SV_Target
     float roughness = max(saturate(Surface.y), MIN_ROUGHNESS);
     float ao = saturate(Surface.z);
     float normalStrength = max(Surface.w, 0.0f);
-    float3 albedo = saturate(Albedo.rgb);
 
-    // float3 albedo = diffuseTexture.Sample(samplerState, input.TexCoord).rgb;
-    // float3 albedo = float3(0.75f, 0.75f, 0.75f); // серый
-    // float3 albedo = float3(0.91f, 0.05f, 0.82f); // розовый
-    // float3 albedo = float3(0.01f, 0.01f, 0.01f);
-    // float3 N = CalculateNormalFromMap(input.Normal, input.Tangent, input.Bitangent, input.TexCoord, normalStrength);
-    float3 N = input.Normal;
+    float3 texAlbedo = diffuseTexture.Sample(samplerState, input.TexCoord).rgb;
+    float3 albedo = saturate(texAlbedo * Albedo.rgb);
+    float3 N = CalculateNormalFromMap(
+     input.Normal,
+     input.Tangent,
+     input.Bitangent,
+     input.TexCoord,
+     normalStrength
+    );
+
+    //float3 N = input.Normal;
     float3 V = normalize(input.CameraPos - input.WorldPos);
     float3 F0 = lerp(float3(0.04f, 0.04f, 0.04f), albedo, metallic);
     float3 Lo = 0.0f;

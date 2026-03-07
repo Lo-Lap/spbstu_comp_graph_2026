@@ -156,36 +156,6 @@ HRESULT RenderClass::Init(HWND hWnd, WCHAR szTitle[], WCHAR szWindowClass[])
         m_pDeviceContext->RSSetViewports(1, &vp);
     }
 
-    INITCOMMONCONTROLSEX icc{};
-    icc.dwSize = sizeof(icc);
-    icc.dwICC = ICC_BAR_CLASSES;
-    InitCommonControlsEx(&icc);
-
-    const int x = 20;
-    int y = 20;
-    const int w = 220;
-    const int h = 30;
-    const int gap = 10;
-    for (int i = 0; i < 3; i++)
-    {
-        m_hLightSlider[i] = CreateWindowExW(
-            0, TRACKBAR_CLASSW, L"",
-            WS_CHILD | WS_VISIBLE | TBS_AUTOTICKS,
-            x + 35, y, w, h,
-            hWnd, (HMENU)(1000 + i), GetModuleHandleW(nullptr), nullptr
-        );
-        m_hLightSwatch[i] = CreateWindowExW(
-            0, L"STATIC", L"",
-            WS_CHILD | WS_VISIBLE | SS_OWNERDRAW,
-            x, y + 6, 16, 16,
-            hWnd, (HMENU)(1200 + i), GetModuleHandleW(nullptr), nullptr
-        );
-        SendMessageW(m_hLightSlider[i], TBM_SETRANGE, TRUE, MAKELPARAM(0, 100));
-        int pos = (int)(m_LightBrightness[i] * 100.0f);
-        SendMessageW(m_hLightSlider[i], TBM_SETPOS, TRUE, pos);
-        y += h + gap;
-    }
-
     if (SUCCEEDED(result))
     {
         result = InitBufferShader();
@@ -275,60 +245,6 @@ HRESULT RenderClass::InitBufferShader()
     if (FAILED(result))
         return result;
 
-    //static const CubeVertex vertices[] =
-    //{
-    //    { {-1.0f, -1.0f,  1.0f}, { 0.0f,  -1.0f,  0.0f}, {0.0f, 1.0f} },
-    //    { { 1.0f, -1.0f,  1.0f}, { 0.0f,  -1.0f,  0.0f}, {1.0f, 1.0f} },
-    //    { { 1.0f, -1.0f, -1.0f}, { 0.0f,  -1.0f,  0.0f}, {1.0f, 0.0f} },
-    //    { {-1.0f, -1.0f, -1.0f}, { 0.0f,  -1.0f,  0.0f}, {0.0f, 0.0f} },
-    //
-    //    { {-1.0f,  1.0f, -1.0f}, { 0.0f,  1.0f, 0.0f}, {0.0f, 1.0f} },
-    //    { { 1.0f,  1.0f, -1.0f}, { 0.0f,  1.0f, 0.0f}, {1.0f, 1.0f} },
-    //    { { 1.0f,  1.0f,  1.0f}, { 0.0f,  1.0f, 0.0f}, {1.0f, 0.0f} },
-    //    { {-1.0f,  1.0f,  1.0f}, { 0.0f,  1.0f, 0.0f}, {0.0f, 0.0f} },
-    //
-    //    { { 1.0f, -1.0f, -1.0f}, { 1.0f,  0.0f,  0.0f}, {0.0f, 1.0f} },
-    //    { { 1.0f, -1.0f,  1.0f}, { 1.0f,  0.0f,  0.0f}, {1.0f, 1.0f} },
-    //    { { 1.0f,  1.0f,  1.0f}, { 1.0f,  0.0f,  0.0f}, {1.0f, 0.0f} },
-    //    { { 1.0f,  1.0f, -1.0f}, { 1.0f,  0.0f,  0.0f}, {0.0f, 0.0f} },
-    //
-    //    { {-1.0f, -1.0f,  1.0f}, {-1.0f,  0.0f,  0.0f}, {0.0f, 1.0f} },
-    //    { {-1.0f, -1.0f, -1.0f}, {-1.0f,  0.0f,  0.0f}, {1.0f, 1.0f} },
-    //    { {-1.0f,  1.0f, -1.0f}, {-1.0f,  0.0f,  0.0f}, {1.0f, 0.0f} },
-    //    { {-1.0f,  1.0f,  1.0f}, {-1.0f,  0.0f,  0.0f}, {0.0f, 0.0f} },
-    //
-    //    { { 1.0f, -1.0f,  1.0f}, { 0.0f,  0.0f,  1.0f}, {0.0f, 1.0f} },
-    //    { {-1.0f, -1.0f,  1.0f}, { 0.0f,  0.0f,  1.0f}, {1.0f, 1.0f} },
-    //    { {-1.0f,  1.0f,  1.0f}, { 0.0f,  0.0f,  1.0f}, {1.0f, 0.0f} },
-    //    { { 1.0f,  1.0f,  1.0f}, { 0.0f,  0.0f,  1.0f}, {0.0f, 0.0f} },
-    //
-    //    { {-1.0f, -1.0f, -1.0f}, { 0.0f,  0.0f,  -1.0f}, {0.0f, 1.0f} },
-    //    { { 1.0f, -1.0f, -1.0f}, { 0.0f,  0.0f,  -1.0f}, {1.0f, 1.0f} },
-    //    { { 1.0f,  1.0f, -1.0f}, { 0.0f,  0.0f,  -1.0f}, {1.0f, 0.0f} },
-    //    { {-1.0f,  1.0f, -1.0f}, { 0.0f,  0.0f,  -1.0f}, {0.0f, 0.0f} },
-    //};
-    //
-    //WORD indices[] =
-    //{
-    //    0, 2, 1,
-    //    0, 3, 2,
-    //
-    //    4, 6, 5,
-    //    4, 7, 6,
-    //
-    //    8, 10, 9,
-    //    8, 11, 10,
-    //
-    //    12, 14, 13,
-    //    12, 15, 14,
-    //
-    //    16, 18, 17,
-    //    16, 19, 18,
-    //
-    //    20, 22, 21,
-    //    20, 23, 22
-    //};
-
     const int stacks = 32;
     const int slices = 64;
     const float radius = 1.0f;
@@ -386,7 +302,6 @@ HRESULT RenderClass::InitBufferShader()
 
     D3D11_BUFFER_DESC bd = {};
     bd.Usage = D3D11_USAGE_DEFAULT;
-    //bd.ByteWidth = sizeof(CubeVertex) * ARRAYSIZE(vertices);
     bd.ByteWidth = (UINT)(sizeof(CubeVertex) * vertices.size());
     bd.BindFlags = D3D11_BIND_VERTEX_BUFFER;
     bd.CPUAccessFlags = 0;
@@ -400,12 +315,9 @@ HRESULT RenderClass::InitBufferShader()
         return result;
 
     bd.Usage = D3D11_USAGE_DEFAULT;
-    //bd.ByteWidth = sizeof(WORD) * ARRAYSIZE(indices);
     bd.ByteWidth = (UINT)(sizeof(WORD) * indices.size());
     bd.BindFlags = D3D11_BIND_INDEX_BUFFER;
     bd.CPUAccessFlags = 0;
-    //initData.pSysMem = indices;
-    //result = m_pDevice->CreateBuffer(&bd, &initData, &m_pIndexBuffer);
     initData.pSysMem = indices.data();
     result = m_pDevice->CreateBuffer(&bd, &initData, &m_pIndexBuffer);
     if (FAILED(result))
@@ -446,13 +358,40 @@ HRESULT RenderClass::InitBufferShader()
     if (FAILED(result))
         return result;
 
-    //result = DirectX::CreateDDSTextureFromFile(m_pDevice, L"cat.dds", nullptr, &m_pTextureView);
-    //if (FAILED(result))
-    //    return result;
+    const wchar_t* albedoFiles[kSphereCount] =
+    {
+         L"cat.dds",
+         L"cat.dds",
+         L"cat.dds",
+         L"cat.dds"
+    };
+    const wchar_t* normalFiles[kSphereCount] =
+    {
+         L"cube_normal.dds",
+         L"cube_normal.dds",
+         L"cube_normal.dds",
+         L"cube_normal.dds"
+    };
+    for (int i = 0; i < kSphereCount; ++i)
+    {
+        result = DirectX::CreateDDSTextureFromFile(
+            m_pDevice,
+            albedoFiles[i],
+            nullptr,
+            &m_pTextureViews[i]
+        );
+        if (FAILED(result))
+            return result;
+        result = DirectX::CreateDDSTextureFromFile(
+            m_pDevice,
+            normalFiles[i],
+            nullptr,
+            &m_pNormalMapViews[i]
+        );
+        if (FAILED(result))
+            return result;
+    }
 
-    //result = DirectX::CreateDDSTextureFromFile(m_pDevice, L"cube_normal.dds", nullptr, &m_pNormalMapView);
-    //if (FAILED(result))
-    //    return result;
 
     //result = DirectX::CreateDDSTextureFromFile(m_pDevice, L"cubemaps/shanghai_2048_box.dds", nullptr, &m_pEnvironmentSRV);
     result = DirectX::CreateDDSTextureFromFileEx(
@@ -1039,16 +978,18 @@ void RenderClass::TerminateBufferShader()
         m_pSkyDepthState = nullptr;
     }
 
-    if (m_pTextureView)
+    for (int i = 0; i < kSphereCount; ++i)
     {
-        m_pTextureView->Release();
-        m_pTextureView = nullptr;
-    }
-
-    if (m_pNormalMapView)
-    {
-        m_pNormalMapView->Release();
-        m_pNormalMapView = nullptr;
+        if (m_pTextureViews[i])
+        {
+            m_pTextureViews[i]->Release();
+            m_pTextureViews[i] = nullptr;
+        }
+        if (m_pNormalMapViews[i])
+        {
+            m_pNormalMapViews[i]->Release();
+            m_pNormalMapViews[i] = nullptr;
+        }
     }
 
     if (m_pSamplerState)
@@ -1198,7 +1139,6 @@ void RenderClass::Render()
 
     {
         ScopedEvent evt(m_pAnnotation, L"DrawIndexed");
-        //m_pDeviceContext->DrawIndexed(36, 0, 0);
         m_pDeviceContext->DrawIndexed(m_indexCount, 0, 0);
     }
 
@@ -1213,7 +1153,6 @@ void RenderClass::Render()
         if (frameCount % 20 == 0)
         {
             char buf[256];
-            //sprintf_s(buf, "Average Luminance: %f\n", m_CurrentLuminance);
             sprintf_s(buf, "CurrLum=%.4f AdaptLum=%.4f\n", m_CurrentLuminance, m_AdaptedLuminance);
 
             OutputDebugStringA(buf);
@@ -1253,15 +1192,6 @@ void RenderClass::SetMVPBuffer()
     //m_pDeviceContext->OMSetRenderTargets(1, &m_pRenderTargetView, m_pDepthView); 
     m_pDeviceContext->OMSetDepthStencilState(nullptr, 0);
 
-    //m_CubeAngle += 0.01f;
-    //if (m_CubeAngle > XM_2PI) m_CubeAngle -= XM_2PI;
-
-    //XMMATRIX rotation = XMMatrixRotationY(m_CubeAngle);
-
-    //XMMATRIX translation = XMMatrixTranslation(m_CubePosition.x, m_CubePosition.y, m_CubePosition.z);
-
-    //XMMATRIX model = rotation * translation;
-
     XMMATRIX model = XMMatrixTranslation(m_CubePosition.x, m_CubePosition.y, m_CubePosition.z);
 
     XMVECTOR direction = XMVectorSet(
@@ -1287,14 +1217,6 @@ void RenderClass::SetMVPBuffer()
     XMMATRIX vpT = XMMatrixTranspose(vp);
 
     m_pDeviceContext->UpdateSubresource(m_pModelBuffer, 0, nullptr, &mT, 0, 0);
-
-    //D3D11_MAPPED_SUBRESOURCE mappedResource;
-    //HRESULT hr = m_pDeviceContext->Map(m_pVPBuffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &mappedResource);
-    //if (SUCCEEDED(hr))
-    //{
-    //    memcpy(mappedResource.pData, &vpT, sizeof(XMMATRIX));
-    //    m_pDeviceContext->Unmap(m_pVPBuffer, 0);
-    //}
 
     m_pDeviceContext->VSSetConstantBuffers(0, 1, &m_pModelBuffer);
     m_pDeviceContext->VSSetConstantBuffers(1, 1, &m_pVPBuffer);
@@ -1347,23 +1269,17 @@ void RenderClass::SetMVPBuffer()
     // red (pink)
     lights[0].Position = XMFLOAT3(0.0f, 0.5f, -r);
     lights[0].Range = range;
-    //lights[0].Color = XMFLOAT3(1.0f, 0.35f, 0.65f);
-    //lights[0].Color = XMFLOAT3(1.0f, 0.0f, 0.0f);
-    lights[0].Color = XMFLOAT3(1.0f, 1.0f, 1.0f);
+    lights[0].Color = m_LightColors[0];
 
     // green (cyan)
     lights[1].Position = XMFLOAT3(-0.43f, -0.25f, -r);
     lights[1].Range = range;
-    //lights[1].Color = XMFLOAT3(0.20f, 0.95f, 0.85f);
-    lights[1].Color = XMFLOAT3(0.0f, 1.0f, 0.0f);
-    //lights[1].Color = XMFLOAT3(1.0f, 0.0f, 0.0f);
+    lights[1].Color = m_LightColors[1];
 
     // blue (purple)
     lights[2].Position = XMFLOAT3(0.43f, -0.25f, -r);
     lights[2].Range = range;
-    //lights[2].Color = XMFLOAT3(0.55f, 0.35f, 1.0f);
-    lights[2].Color = XMFLOAT3(0.0f, 0.0f, 1.0f);
-    //lights[2].Color = XMFLOAT3(1.0f, 0.0f, 0.0f);
+    lights[2].Color = m_LightColors[2];
 
     lights[0].Intensity = m_LightBrightness[0] * baseIntensity;
     lights[1].Intensity = m_LightBrightness[1] * baseIntensity;
@@ -1414,19 +1330,33 @@ void RenderClass::SetMVPBuffer()
 
     m_pDeviceContext->VSSetShader(m_pVertexShader, nullptr, 0);
     m_pDeviceContext->PSSetShader(m_pPixelShader, nullptr, 0);
-
-    m_pDeviceContext->PSSetShaderResources(0, 1, &m_pTextureView);
-    m_pDeviceContext->PSSetShaderResources(1, 1, &m_pNormalMapView);
     m_pDeviceContext->PSSetSamplers(0, 1, &m_pSamplerState);
-    //m_pDeviceContext->DrawIndexed(36, 0, 0);
-    m_pDeviceContext->DrawIndexed(m_indexCount, 0, 0);
 
-    //static float orbit = 0.0f;
-    //orbit += 0.01f;
-    //XMMATRIX model2 = XMMatrixRotationZ(orbit) * XMMatrixTranslation(4.0f, 0.0f, 0.0f) * XMMatrixRotationZ(-orbit);
-    //XMMATRIX mT2 = XMMatrixTranspose(model2);
-    //m_pDeviceContext->UpdateSubresource(m_pModelBuffer, 0, nullptr, &mT2, 0, 0);
-    //m_pDeviceContext->DrawIndexed(36, 0, 0);
+    const float sphereZ = 0.0f;
+
+    const XMFLOAT3 spherePositions[kSphereCount] =
+    {
+     XMFLOAT3(-1.2f, 1.2f, sphereZ), // 0 - левый верх
+     XMFLOAT3(1.2f, 1.2f, sphereZ), // 1 - правый верх
+     XMFLOAT3(-1.2f, -1.2f, sphereZ), // 2 - левый низ
+     XMFLOAT3(1.2f, -1.2f, sphereZ) // 3 - правый низ
+    };
+
+
+    for (int i = 0; i < kSphereCount; ++i)
+    {
+        XMMATRIX sphereModel = XMMatrixTranslation(
+            spherePositions[i].x,
+            spherePositions[i].y,
+            spherePositions[i].z
+        );
+
+        XMMATRIX sphereModelT = XMMatrixTranspose(sphereModel);
+        m_pDeviceContext->UpdateSubresource(m_pModelBuffer, 0, nullptr, &sphereModelT, 0, 0);
+        m_pDeviceContext->PSSetShaderResources(0, 1, &m_pTextureViews[i]);
+        m_pDeviceContext->PSSetShaderResources(1, 1, &m_pNormalMapViews[i]);
+        m_pDeviceContext->DrawIndexed(m_indexCount, 0, 0);
+    }
 
     m_pDeviceContext->PSSetShader(m_pLightPixelShader, nullptr, 0);
     m_pDeviceContext->PSSetConstantBuffers(0, 1, &m_pColorBuffer);
@@ -1452,8 +1382,6 @@ void RenderClass::SetMVPBuffer()
         );
 
         m_pDeviceContext->UpdateSubresource(m_pColorBuffer, 0, nullptr, &lightColorCB, 0, 0);
-
-        //m_pDeviceContext->DrawIndexed(36, 0, 0);
         m_pDeviceContext->DrawIndexed(m_indexCount, 0, 0);
     }
 }
@@ -1759,6 +1687,19 @@ void RenderClass::RenderImGui()
     ImGui_ImplDX11_NewFrame();
     ImGui_ImplWin32_NewFrame();
     ImGui::NewFrame();
+    ImGui::Begin("Lights");
+    for (int i = 0; i < 3; i++)
+    {
+        char colorLabel[32];
+        char brightLabel[32];
+        sprintf_s(colorLabel, "Light %d color", i);
+        sprintf_s(brightLabel, "Light %d brightness", i);
+        //ImGui::SliderFloat(names[i], &m_LightBrightness[i], 0.0f, 100.0f);
+        ImGui::ColorEdit3(colorLabel, &m_LightColors[i].x);
+        ImGui::SliderFloat(brightLabel, &m_LightBrightness[i], 0.0f, 3.0f);
+        ImGui::Separator();
+    }
+    ImGui::End();
     ImGui::Begin("Material");
     ImGui::SliderFloat("Metalness", &m_MaterialMetalness, 0.0f, 1.0f);
     ImGui::SliderFloat("Roughness", &m_MaterialRoughness, 0.045f, 1.0f);

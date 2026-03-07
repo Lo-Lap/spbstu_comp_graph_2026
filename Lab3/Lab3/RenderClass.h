@@ -31,7 +31,6 @@ public:
         m_szTitle(nullptr),
         m_szWindowClass(nullptr),
 
-        m_pTextureView(nullptr),
         m_pSamplerState(nullptr),
 
         m_pDepthView(nullptr),
@@ -39,7 +38,6 @@ public:
 
         m_pLightBuffer(nullptr),
         m_pLightPixelShader(nullptr),
-        m_pNormalMapView(nullptr),
         m_pMaterialBuffer(nullptr),
 
         m_pEnvironmentSRV(nullptr),
@@ -92,6 +90,12 @@ public:
         m_MaterialColor(1.0f, 0.0f, 0.0f)
 
     {
+        for (int i = 0; i < kSphereCount; ++i)
+        {
+            m_pTextureViews[i] = nullptr;
+            m_pNormalMapViews[i] = nullptr;
+        }
+
         for (int i = 0; i < 16; i++)
         {
             m_pLuminanceTextures[i] = nullptr;
@@ -123,7 +127,7 @@ public:
     void SetLightBrightness(int index, float value);
     float GetLightBrightness(int index) const;
 
-    HWND m_hLightSlider[3] = { nullptr, nullptr, nullptr };
+    //HWND m_hLightSlider[3] = { nullptr, nullptr, nullptr };
     HWND m_hLightSwatch[3] = { nullptr, nullptr, nullptr };
 
     HRESULT InitLuminanceResources(UINT width, UINT height);
@@ -142,7 +146,14 @@ private:
     HRESULT CreateHDRSceneTexture(UINT width, UINT height);
 
     float m_LightBrightness[3] = { 1.0f, 0.9f, 0.9f };
-    
+    XMFLOAT3 m_LightColors[3] =
+    {
+         XMFLOAT3(1.0f, 1.0f, 1.0f),
+         XMFLOAT3(0.0f, 1.0f, 0.0f),
+         XMFLOAT3(0.0f, 0.0f, 1.0f)
+    };
+
+
     ID3D11Device* m_pDevice;
     ID3D11DeviceContext* m_pDeviceContext;
 
@@ -159,10 +170,10 @@ private:
     ID3D11VertexShader* m_pVertexShader;
     ID3D11InputLayout* m_pLayout;
 
-    ID3D11ShaderResourceView* m_pTextureView;
+    static constexpr int kSphereCount = 4;
+    ID3D11ShaderResourceView* m_pTextureViews[kSphereCount];
+    ID3D11ShaderResourceView* m_pNormalMapViews[kSphereCount];
     ID3D11SamplerState* m_pSamplerState;
-
-    ID3D11ShaderResourceView* m_pNormalMapView;
 
     ID3D11DepthStencilView* m_pDepthView;
 

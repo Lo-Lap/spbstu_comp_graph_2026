@@ -206,58 +206,6 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
             g_Render->MouseMoved(GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam), hWnd);
         }
         break;
-
-    case WM_HSCROLL:
-    {
-        HWND hCtrl = (HWND)lParam;
-        for (int i = 0; i < 3; i++)
-        {
-            if (hCtrl == g_Render->m_hLightSlider[i]) 
-            {
-                int pos = (int)SendMessageW(hCtrl, TBM_GETPOS, 0, 0);
-                float brightness = pos / 100.0f; 
-                g_Render->SetLightBrightness(i, brightness);
-                break;
-            }
-        }
-
-        if (LOWORD(wParam) == TB_ENDTRACK)
-        {
-            SetFocus(hWnd);
-        }
-        return 0;
-    }
-    case WM_DRAWITEM:
-    {
-        const DRAWITEMSTRUCT* dis = reinterpret_cast<DRAWITEMSTRUCT*>(lParam);
-
-        int idx = (int)dis->CtlID - 1200;
-        if (idx >= 0 && idx < 3)
-        {
-            /*
-            COLORREF colors[3] = {
-                RGB(255, 89, 166), 
-                RGB(51, 242, 217), 
-                RGB(140, 89, 255)  
-            };
-            */
-
-            COLORREF colors[3] = {
-                RGB(255, 0, 0),
-                RGB(0, 255, 0),
-                RGB(0, 0, 255)
-            };
-
-            HBRUSH br = CreateSolidBrush(colors[idx]);
-            FillRect(dis->hDC, &dis->rcItem, br);
-            DeleteObject(br);
-
-            FrameRect(dis->hDC, &dis->rcItem, (HBRUSH)GetStockObject(BLACK_BRUSH));
-
-            return TRUE;
-        }
-        break;
-    }
     default:
         return DefWindowProc(hWnd, message, wParam, lParam);
     }
