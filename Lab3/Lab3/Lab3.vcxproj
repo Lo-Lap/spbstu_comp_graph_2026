@@ -179,23 +179,48 @@
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">false</ExcludedFromBuild>
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">false</ExcludedFromBuild>
     </CopyFileToFolders>
-    <Image Include="cubemaps\church_box.dds" />
-    <Image Include="cubemaps\qwantani_box.dds" />
-    <Image Include="cubemaps\shanghai_box.dds" />
-    <Image Include="cubemaps\sunset_1024_box.dds" />
-    <Image Include="cubemaps\sunset_box.dds" />
+    <CopyFileToFolders Include="cubemaps\shanghai_box.dds">
+      <DestinationFolders Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">$(OutDir)/cubemaps</DestinationFolders>
+      <DestinationFolders Condition="'$(Configuration)|$(Platform)'=='Release|x64'">$(OutDir)/cubemaps</DestinationFolders>
+    </CopyFileToFolders>
     <Image Include="Lab3.ico" />
     <Image Include="small.ico" />
-    <Image Include="textures\bark_brown_02_diff_4k.dds" />
-    <Image Include="textures\blue_metal_plate_diff_4k.dds" />
-    <Image Include="textures\fabric_leather_02_diff_4k.dds" />
-    <Image Include="textures\gladkaya_kozha.dds" />
-    <Image Include="textures\gladkie_kamushki.dds" />
-    <Image Include="textures\kameshki.dds" />
-    <Image Include="textures\KORA_DEREVA.dds" />
-    <Image Include="textures\old_stone_wall_diff_4k.dds" />
-    <Image Include="textures\sinushnaya_zhelezka.dds" />
-    <Image Include="textures\strannaya_kozha.dds" />
+    <CopyFileToFolders Include="textures\bark_brown_02_diff_4k.dds">
+      <DestinationFolders Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">$(OutDir)/textures</DestinationFolders>
+      <DestinationFolders Condition="'$(Configuration)|$(Platform)'=='Release|x64'">$(OutDir)/textures</DestinationFolders>
+    </CopyFileToFolders>
+    <CopyFileToFolders Include="textures\blue_metal_plate_diff_4k.dds">
+      <DestinationFolders Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">$(OutDir)/textures</DestinationFolders>
+      <DestinationFolders Condition="'$(Configuration)|$(Platform)'=='Release|x64'">$(OutDir)/textures</DestinationFolders>
+    </CopyFileToFolders>
+    <CopyFileToFolders Include="textures\fabric_leather_02_diff_4k.dds">
+      <DestinationFolders Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">$(OutDir)/textures</DestinationFolders>
+      <DestinationFolders Condition="'$(Configuration)|$(Platform)'=='Release|x64'">$(OutDir)/textures</DestinationFolders>
+    </CopyFileToFolders>
+    <CopyFileToFolders Include="textures\gladkaya_kozha.dds">
+      <DestinationFolders Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">$(OutDir)/textures</DestinationFolders>
+      <DestinationFolders Condition="'$(Configuration)|$(Platform)'=='Release|x64'">$(OutDir)/textures</DestinationFolders>
+    </CopyFileToFolders>
+    <CopyFileToFolders Include="textures\kameshki.dds">
+      <DestinationFolders Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">$(OutDir)/textures</DestinationFolders>
+      <DestinationFolders Condition="'$(Configuration)|$(Platform)'=='Release|x64'">$(OutDir)/textures</DestinationFolders>
+    </CopyFileToFolders>
+    <CopyFileToFolders Include="textures\KORA_DEREVA.dds">
+      <DestinationFolders Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">$(OutDir)/textures</DestinationFolders>
+      <DestinationFolders Condition="'$(Configuration)|$(Platform)'=='Release|x64'">$(OutDir)/textures</DestinationFolders>
+    </CopyFileToFolders>
+    <CopyFileToFolders Include="textures\old_stone_wall_diff_4k.dds">
+      <DestinationFolders Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">$(OutDir)/textures</DestinationFolders>
+      <DestinationFolders Condition="'$(Configuration)|$(Platform)'=='Release|x64'">$(OutDir)/textures</DestinationFolders>
+    </CopyFileToFolders>
+    <CopyFileToFolders Include="textures\sinushnaya_zhelezka.dds">
+      <DestinationFolders Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">$(OutDir)/textures</DestinationFolders>
+      <DestinationFolders Condition="'$(Configuration)|$(Platform)'=='Release|x64'">$(OutDir)/textures</DestinationFolders>
+    </CopyFileToFolders>
+    <CopyFileToFolders Include="textures\strannaya_kozha.dds">
+      <DestinationFolders Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">$(OutDir)/textures</DestinationFolders>
+      <DestinationFolders Condition="'$(Configuration)|$(Platform)'=='Release|x64'">$(OutDir)/textures</DestinationFolders>
+    </CopyFileToFolders>
   </ItemGroup>
   <ItemGroup>
     <CopyFileToFolders Include="ColorPixel.ps">
@@ -241,11 +266,18 @@
     </CopyFileToFolders>
   </ItemGroup>
   <ItemGroup>
+    <CopyFileToFolders Include="imgui.ini">
+      <FileType>Document</FileType>
+    </CopyFileToFolders>
     <None Include="imgui\imgui.vcxproj" />
     <None Include="imgui\imgui.vcxproj.filters" />
     <None Include="imgui\imgui.vcxproj.user" />
-    <None Include="SkyPixel.ps" />
-    <None Include="SkyVertex.vs" />
+    <CopyFileToFolders Include="SkyPixel.ps">
+      <FileType>Document</FileType>
+    </CopyFileToFolders>
+    <CopyFileToFolders Include="SkyVertex.vs">
+      <FileType>Document</FileType>
+    </CopyFileToFolders>
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

@@ -83,12 +83,13 @@ public:
         m_pDownsamplePS(nullptr),
         m_indexCount(0),
 
-        m_MaterialMetalness(0.0f),
+        m_MaterialMetalness(0.6f),
         m_MaterialRoughness(0.6f),
         m_MaterialAO(1.0f),
         m_NormalStrength(1.0f),
-        m_MaterialColor(1.0f, 1.0f, 1.0f)
-
+        m_MaterialColor(1.0f, 1.0f, 1.0f),
+        m_EnableTextures(true),
+        m_DebugViewMode(DebugView_Final)
     {
         for (int i = 0; i < kSphereCount; ++i)
         {
@@ -250,5 +251,15 @@ private:
     float m_NormalStrength;
     XMFLOAT3 m_MaterialColor;
 
+    bool m_EnableTextures;
+
+    enum DebugViewMode
+    {
+        DebugView_Final = 0,
+        DebugView_NDF = 1,
+        DebugView_Geometry = 2,
+        DebugView_Fresnel = 3
+    };
+    int m_DebugViewMode;
 };
 #endif

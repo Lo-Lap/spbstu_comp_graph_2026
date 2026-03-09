@@ -21,6 +21,7 @@ cbuffer MaterialBuffer : register(b3)
 {
     float4 Surface;
     float4 Albedo;
+    float4 DebugView;
 };
 
 struct PS_INPUT
@@ -86,20 +87,32 @@ float4 main(PS_INPUT input) : SV_Target
     float ao = saturate(Surface.z);
     float normalStrength = max(Surface.w, 0.0f);
 
-    float3 texAlbedo = diffuseTexture.Sample(samplerState, input.TexCoord).rgb;
-    float3 albedo = saturate(texAlbedo * Albedo.rgb);
-    float3 N = CalculateNormalFromMap(
-     input.Normal,
-     input.Tangent,
-     input.Bitangent,
-     input.TexCoord,
-     normalStrength
-    );
+    float useTextures = step(0.5f, Albedo.a);
+float3 texAlbedo = diffuseTexture.Sample(samplerState, input.TexCoord).rgb;
+float3 albedo = lerp(
+ saturate(Albedo.rgb),
+ saturate(texAlbedo * Albedo.rgb),
+ useTextures
+);
+float3 N = normalize(input.Normal);
+if (useTextures > 0.5f)
+{
+ N = CalculateNormalFromMap(
+ input.Normal,
+ input.Tangent,
+ input.Bitangent,
+ input.TexCoord,
+ normalStrength
+ );
+}
+
 
     //float3 N = input.Normal;
     float3 V = normalize(input.CameraPos - input.WorldPos);
     float3 F0 = lerp(float3(0.04f, 0.04f, 0.04f), albedo, metallic);
+    int debugMode = (int)(DebugView.x + 0.5f);
     float3 Lo = 0.0f;
+
     [unroll]
     for (int i = 0; i < 3; ++i)
     {
@@ -110,12 +123,34 @@ float4 main(PS_INPUT input) : SV_Target
         float NdotL = saturate(dot(N, L));
         float NdotV = saturate(dot(N, V));
         if (NdotL <= 0.0f || NdotV <= 0.0f)
-        continue;
+            continue;
         float attenuation = ComputePointLightFalloff(distanceToLight, lights[i].Range);
         float3 radiance = lights[i].Color * lights[i].Intensity * attenuation;
+        
         float NDF = DistributionGGX(N, H, roughness);
         float G = GeometrySmith(N, V, L, roughness);
         float3 F = FresnelSchlick(saturate(dot(H, V)), F0);
+        
+        if (debugMode == 1) // NDF
+        {
+             //float ndfVis = saturate(NDF);
+             //return float4(ndfVis.xxx, 1.0f);
+             return float4((NDF.xxx) * radiance * NdotL, 1.0f);
+        }
+
+        if (debugMode == 2) // Geometry
+        {
+             //float gVis = saturate(G);
+             //return float4(gVis.xxx, 1.0f);
+             return float4((G.xxx) * radiance * NdotL, 1.0f);
+        }
+
+        if (debugMode == 3) // Fresnel
+        {
+            //return float4(saturate(F), 1.0f);
+            return float4((F.xxx) * radiance * NdotL, 1.0f);
+        }
+
         float3 numerator = NDF * G * F;
         float denominator = max(4.0f * NdotV * NdotL, 1e-4f);
         float3 specular = numerator / denominator;

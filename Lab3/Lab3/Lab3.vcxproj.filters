@@ -114,51 +114,21 @@
     <Image Include="Lab3.ico">
       <Filter>Файлы ресурсов</Filter>
     </Image>
-    <Image Include="cubemaps\church_box.dds">
+    <CopyFileToFolders Include="cubemaps\church_box.dds">
       <Filter>cubemaps</Filter>
-    </Image>
-    <Image Include="cubemaps\qwantani_box.dds">
+    </CopyFileToFolders>
+    <CopyFileToFolders Include="cubemaps\qwantani_box.dds">
       <Filter>cubemaps</Filter>
-    </Image>
-    <Image Include="cubemaps\shanghai_box.dds">
+    </CopyFileToFolders>
+    <CopyFileToFolders Include="cubemaps\sunset_box.dds">
       <Filter>cubemaps</Filter>
-    </Image>
-    <Image Include="cubemaps\sunset_box.dds">
+    </CopyFileToFolders>
+    <CopyFileToFolders Include="cubemaps\sunset_1024_box.dds">
       <Filter>cubemaps</Filter>
-    </Image>
-    <Image Include="cubemaps\sunset_1024_box.dds">
+    </CopyFileToFolders>
+    <CopyFileToFolders Include="cubemaps\shanghai_box.dds">
       <Filter>cubemaps</Filter>
-    </Image>
-    <Image Include="textures\bark_brown_02_diff_4k.dds">
-      <Filter>textures</Filter>
-    </Image>
-    <Image Include="textures\blue_metal_plate_diff_4k.dds">
-      <Filter>textures</Filter>
-    </Image>
-    <Image Include="textures\fabric_leather_02_diff_4k.dds">
-      <Filter>textures</Filter>
-    </Image>
-    <Image Include="textures\gladkaya_kozha.dds">
-      <Filter>textures</Filter>
-    </Image>
-    <Image Include="textures\gladkie_kamushki.dds">
-      <Filter>textures</Filter>
-    </Image>
-    <Image Include="textures\kameshki.dds">
-      <Filter>textures</Filter>
-    </Image>
-    <Image Include="textures\KORA_DEREVA.dds">
-      <Filter>textures</Filter>
-    </Image>
-    <Image Include="textures\old_stone_wall_diff_4k.dds">
-      <Filter>textures</Filter>
-    </Image>
-    <Image Include="textures\sinushnaya_zhelezka.dds">
-      <Filter>textures</Filter>
-    </Image>
-    <Image Include="textures\strannaya_kozha.dds">
-      <Filter>textures</Filter>
-    </Image>
+    </CopyFileToFolders>
   </ItemGroup>
   <ItemGroup>
     <CopyFileToFolders Include="ColorPixel.ps">
@@ -188,6 +158,42 @@
     <CopyFileToFolders Include="LuminanceDownsample.ps">
       <Filter>shader</Filter>
     </CopyFileToFolders>
+    <CopyFileToFolders Include="textures\bark_brown_02_diff_4k.dds">
+      <Filter>textures</Filter>
+    </CopyFileToFolders>
+    <CopyFileToFolders Include="textures\blue_metal_plate_diff_4k.dds">
+      <Filter>textures</Filter>
+    </CopyFileToFolders>
+    <CopyFileToFolders Include="textures\fabric_leather_02_diff_4k.dds">
+      <Filter>textures</Filter>
+    </CopyFileToFolders>
+    <CopyFileToFolders Include="textures\gladkaya_kozha.dds">
+      <Filter>textures</Filter>
+    </CopyFileToFolders>
+    <CopyFileToFolders Include="textures\kameshki.dds">
+      <Filter>textures</Filter>
+    </CopyFileToFolders>
+    <CopyFileToFolders Include="textures\KORA_DEREVA.dds">
+      <Filter>textures</Filter>
+    </CopyFileToFolders>
+    <CopyFileToFolders Include="textures\old_stone_wall_diff_4k.dds">
+      <Filter>textures</Filter>
+    </CopyFileToFolders>
+    <CopyFileToFolders Include="textures\sinushnaya_zhelezka.dds">
+      <Filter>textures</Filter>
+    </CopyFileToFolders>
+    <CopyFileToFolders Include="textures\strannaya_kozha.dds">
+      <Filter>textures</Filter>
+    </CopyFileToFolders>
+    <CopyFileToFolders Include="SkyPixel.ps">
+      <Filter>shader</Filter>
+    </CopyFileToFolders>
+    <CopyFileToFolders Include="SkyVertex.vs">
+      <Filter>shader</Filter>
+    </CopyFileToFolders>
+    <CopyFileToFolders Include="imgui.ini">
+      <Filter>Файлы ресурсов</Filter>
+    </CopyFileToFolders>
   </ItemGroup>
   <ItemGroup>
     <None Include="imgui\imgui.vcxproj">
@@ -198,12 +204,6 @@
     </None>
     <None Include="imgui\imgui.vcxproj.user">
       <Filter>imgui</Filter>
-    </None>
-    <None Include="SkyVertex.vs">
-      <Filter>shader</Filter>
-    </None>
-    <None Include="SkyPixel.ps">
-      <Filter>shader</Filter>
     </None>
   </ItemGroup>
 </Project>

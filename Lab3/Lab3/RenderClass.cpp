@@ -59,6 +59,7 @@ struct MaterialParamsCB
 {
     XMFLOAT4 Surface;
     XMFLOAT4 Albedo;
+    XMFLOAT4 DebugView;
 };
 
 
@@ -307,8 +308,6 @@ HRESULT RenderClass::InitBufferShader()
     bd.CPUAccessFlags = 0;
 
     D3D11_SUBRESOURCE_DATA initData = {};
-    /*initData.pSysMem = vertices;
-    result = m_pDevice->CreateBuffer(&bd, &initData, &m_pVertexBuffer);*/
     initData.pSysMem = vertices.data();
     result = m_pDevice->CreateBuffer(&bd, &initData, &m_pVertexBuffer);
     if (FAILED(result))
@@ -357,23 +356,7 @@ HRESULT RenderClass::InitBufferShader()
     result = m_pDevice->CreateBuffer(&materialBufferDesc, nullptr, &m_pMaterialBuffer);
     if (FAILED(result))
         return result;
-    /*
-    const wchar_t* albedoFiles[kSphereCount] =
-    {
-         L"cat.dds",
-         L"cat.dds",
-         L"cat.dds",
-         L"cat.dds"
-    };
-    const wchar_t* normalFiles[kSphereCount] =
-    {
-         L"cube_normal.dds",
-         L"cube_normal.dds",
-         L"cube_normal.dds",
-         L"cube_normal.dds"
-    };
-    */
-    /**/
+
     const wchar_t* albedoFiles[kSphereCount] =
     {
          L"textures/bark_brown_02_diff_4k.dds",
@@ -412,7 +395,7 @@ HRESULT RenderClass::InitBufferShader()
     //result = DirectX::CreateDDSTextureFromFile(m_pDevice, L"cubemaps/shanghai_2048_box.dds", nullptr, &m_pEnvironmentSRV);
     result = DirectX::CreateDDSTextureFromFileEx(
         m_pDevice,
-        L"cubemaps/shanghai_2048_box.dds",
+        L"cubemaps/shanghai_box.dds",
         0,
         D3D11_USAGE_DEFAULT,
         D3D11_BIND_SHADER_RESOURCE,
@@ -1117,19 +1100,24 @@ void RenderClass::Render()
 
     {
         ScopedEvent evt(m_pAnnotation, L"Clear");
-       /* ID3D11RenderTargetView* rtvs[2] = { m_pRenderTargetView, m_pHDRSceneRTV };
-        m_pDeviceContext->OMSetRenderTargets(2, rtvs, m_pDepthView);*/
 
-        m_pDeviceContext->OMSetRenderTargets(1, &m_pHDRSceneRTV, m_pDepthView);
+        ID3D11RenderTargetView* sceneRTV = (m_DebugViewMode == DebugView_Final) ? m_pHDRSceneRTV : m_pRenderTargetView;
+        m_pDeviceContext->OMSetRenderTargets(1, &sceneRTV, m_pDepthView);
 
+        
+        float hdrClear[4] = { 0, 0, 0, 0 };
+        if (m_DebugViewMode == DebugView_Final)
+        {
+            float BackColor[4] = { 0.48f, 0.57f, 0.48f, 1.0f };
+            m_pDeviceContext->ClearRenderTargetView(m_pRenderTargetView, BackColor);
 
-        float BackColor[4] = { 0.48f, 0.57f, 0.48f, 1.0f };
-        m_pDeviceContext->ClearRenderTargetView(m_pRenderTargetView, BackColor);
-
-        float hdrClear[4] = { 0,0,0,0 };
-        if (m_pHDRSceneRTV)
-            m_pDeviceContext->ClearRenderTargetView(m_pHDRSceneRTV, hdrClear);
-
+            if (m_pHDRSceneRTV)
+                m_pDeviceContext->ClearRenderTargetView(m_pHDRSceneRTV, hdrClear);
+        }
+        else
+        {
+            m_pDeviceContext->ClearRenderTargetView(m_pRenderTargetView, hdrClear);
+        }
         m_pDeviceContext->ClearDepthStencilView(m_pDepthView, D3D11_CLEAR_DEPTH, 1.0f, 0);
     }
 
@@ -1158,38 +1146,36 @@ void RenderClass::Render()
         m_pDeviceContext->DrawIndexed(m_indexCount, 0, 0);
     }
 
+    if (m_DebugViewMode == DebugView_Final)
     {
-        ScopedEvent evt(m_pAnnotation, L"Luminance Calculation");
-        CalculateAverageLuminance();
-
-        m_CurrentLuminance = ReadLuminanceFromGPU();
-
-        static int frameCount = 0;
-        frameCount++;
-        if (frameCount % 20 == 0)
         {
-            char buf[256];
-            sprintf_s(buf, "CurrLum=%.4f AdaptLum=%.4f\n", m_CurrentLuminance, m_AdaptedLuminance);
-
-            OutputDebugStringA(buf);
+            ScopedEvent evt(m_pAnnotation, L"Luminance Calculation");
+            CalculateAverageLuminance();
+            m_CurrentLuminance = ReadLuminanceFromGPU();
+            static int frameCount = 0;
+            frameCount++;
+            if (frameCount % 20 == 0)
+            {
+                char buf[256];
+                sprintf_s(buf, "CurrLum=%.4f AdaptLum=%.4f\n", m_CurrentLuminance, m_AdaptedLuminance);
+                OutputDebugStringA(buf);
+            }
+            ULONGLONG now = GetTickCount64();
+            float dt = (m_LastFrameTime == 0) ? (1.0f / 60.0f)
+                : float(now - m_LastFrameTime) / 10.0f;
+            m_LastFrameTime = now;
+            if (dt > 0.1f) dt = 0.1f;
+            float tauUp = 1.5f;
+            float tauDown = 1.5f;
+            float tau = (m_CurrentLuminance > m_AdaptedLuminance) ? tauUp : tauDown;
+            float k = 1.0f - expf(-dt / tau);
+            m_AdaptedLuminance += (m_CurrentLuminance - m_AdaptedLuminance) * k;
         }
 
-        ULONGLONG now = GetTickCount64();
-        float dt = (m_LastFrameTime == 0) ? (1.0f / 60.0f)
-            : float(now - m_LastFrameTime) / 10.0f;
-        m_LastFrameTime = now;
-        if (dt > 0.1f) dt = 0.1f;
-
-        float tauUp = 1.5f; 
-        float tauDown = 1.5f; 
-        float tau = (m_CurrentLuminance > m_AdaptedLuminance) ? tauUp : tauDown;
-        float k = 1.0f - expf(-dt / tau);
-        m_AdaptedLuminance += (m_CurrentLuminance - m_AdaptedLuminance) * k;
-    }
-
-    {
-        ScopedEvent evt(m_pAnnotation, L"Apply tone mapping");
-        ApplyToneMapping();
+        {
+            ScopedEvent evt(m_pAnnotation, L"Apply tone mapping");
+            ApplyToneMapping();
+        }
     }
 
     {
@@ -1280,7 +1266,7 @@ void RenderClass::SetMVPBuffer()
     //const float range = 1.75f;
     const float range = 6.0f;
     const float baseIntensity = 80.0f;
-    float r = 1.5f;
+    float r = 2.5f;
 
     // red (pink)
     lights[0].Position = XMFLOAT3(0.0f, 0.5f, -r);
@@ -1329,7 +1315,12 @@ void RenderClass::SetMVPBuffer()
         m_MaterialColor.x,
         m_MaterialColor.y,
         m_MaterialColor.z,
-        1.0f
+        m_EnableTextures ? 1.0f : 0.0f
+    );
+
+    materialParams.DebugView = XMFLOAT4(
+        static_cast<float>(m_DebugViewMode),
+        0.0f, 0.0f, 0.0f
     );
 
     m_pDeviceContext->UpdateSubresource(m_pMaterialBuffer, 0, nullptr, &materialParams, 0, 0);
@@ -1369,8 +1360,13 @@ void RenderClass::SetMVPBuffer()
 
         XMMATRIX sphereModelT = XMMatrixTranspose(sphereModel);
         m_pDeviceContext->UpdateSubresource(m_pModelBuffer, 0, nullptr, &sphereModelT, 0, 0);
-        m_pDeviceContext->PSSetShaderResources(0, 1, &m_pTextureViews[i]);
-        m_pDeviceContext->PSSetShaderResources(1, 1, &m_pNormalMapViews[i]);
+
+        ID3D11ShaderResourceView* albedoSRV = m_EnableTextures ? m_pTextureViews[i] : nullptr;
+        ID3D11ShaderResourceView* normalSRV = m_EnableTextures ? m_pNormalMapViews[i] : nullptr;
+        
+        m_pDeviceContext->PSSetShaderResources(0, 1, &albedoSRV);
+        m_pDeviceContext->PSSetShaderResources(1, 1, &normalSRV);
+
         m_pDeviceContext->DrawIndexed(m_indexCount, 0, 0);
     }
 
@@ -1717,9 +1713,19 @@ void RenderClass::RenderImGui()
     }
     ImGui::End();
     ImGui::Begin("Material");
-    ImGui::SliderFloat("Metalness", &m_MaterialMetalness, 0.0f, 1.0f);
-    ImGui::SliderFloat("Roughness", &m_MaterialRoughness, 0.045f, 1.0f);
+    ImGui::Checkbox("Enable textures", &m_EnableTextures);
+    ImGui::SliderFloat("Metalness", &m_MaterialMetalness, 0.1f, 1.0f);
+    ImGui::SliderFloat("Roughness", &m_MaterialRoughness, 0.1f, 1.0f);
     ImGui::ColorEdit3("Color", &m_MaterialColor.x);
+    static const char* debugModes[] =
+    {
+         "Final",
+         "Normal Distribution Function",
+         "Geometry Function",
+         "Fresnel Function"
+    };
+    ImGui::Combo("View mode", &m_DebugViewMode, debugModes, IM_ARRAYSIZE(debugModes));
+
     ImGui::End();
     ImGui::Render();
     ImGui_ImplDX11_RenderDrawData(ImGui::GetDrawData());
