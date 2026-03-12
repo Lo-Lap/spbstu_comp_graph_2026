@@ -1383,13 +1383,13 @@ void RenderClass::SetMVPBuffer()
         m_pDeviceContext->UpdateSubresource(m_pModelBuffer, 0, nullptr, &lightModelT, 0, 0);
 
         ColorBuffer lightColorCB;
-        float k = lights[i].Intensity;
+
         XMFLOAT3 c = lights[i].Color;
-        auto clamp = [](float v) { return (v < 0.f) ? 0.f : (v > 1.f ? 1.f : v); };
+        float emissiveScale = 2.0f + m_LightBrightness[i] * 3.0f;
         lightColorCB.color = XMFLOAT4(
-            clamp(c.x * k),
-            clamp(c.y * k),
-            clamp(c.z * k),
+            c.x * emissiveScale,
+            c.y * emissiveScale,
+            c.z * emissiveScale,
             1.0f
         );
 

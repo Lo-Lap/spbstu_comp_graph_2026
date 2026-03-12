@@ -88,23 +88,23 @@ float4 main(PS_INPUT input) : SV_Target
     float normalStrength = max(Surface.w, 0.0f);
 
     float useTextures = step(0.5f, Albedo.a);
-float3 texAlbedo = diffuseTexture.Sample(samplerState, input.TexCoord).rgb;
-float3 albedo = lerp(
- saturate(Albedo.rgb),
- saturate(texAlbedo * Albedo.rgb),
- useTextures
-);
-float3 N = normalize(input.Normal);
-if (useTextures > 0.5f)
-{
- N = CalculateNormalFromMap(
- input.Normal,
- input.Tangent,
- input.Bitangent,
- input.TexCoord,
- normalStrength
- );
-}
+    float3 texAlbedo = diffuseTexture.Sample(samplerState, input.TexCoord).rgb;
+    float3 albedo = lerp(
+        saturate(Albedo.rgb),
+        saturate(texAlbedo * Albedo.rgb),
+        useTextures
+    );
+    float3 N = normalize(input.Normal);
+    if (useTextures > 0.5f)
+    {
+         N = CalculateNormalFromMap(
+         input.Normal,
+         input.Tangent,
+         input.Bitangent,
+         input.TexCoord,
+         normalStrength
+         );
+    }
 
 
     //float3 N = input.Normal;
@@ -148,7 +148,7 @@ if (useTextures > 0.5f)
         if (debugMode == 3) // Fresnel
         {
             //return float4(saturate(F), 1.0f);
-            return float4((F.xxx) * radiance * NdotL, 1.0f);
+            return float4((F) * radiance * NdotL, 1.0f);
         }
 
         float3 numerator = NDF * G * F;
