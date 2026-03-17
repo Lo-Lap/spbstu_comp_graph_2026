@@ -1,0 +1,159 @@
+Texture2D diffuseTexture : register(t0);
+Texture2D normalMap : register(t1);
+SamplerState samplerState : register(s0);
+static const float PI = 3.14159265359f;
+static const float MIN_ROUGHNESS = 0.045f;
+
+struct PointLight
+{
+    float3 Position;
+    float Range;
+    float3 Color;
+    float Intensity;
+};
+
+cbuffer LightBuffer : register(b2)
+{
+    PointLight lights[3];
+};
+
+cbuffer MaterialBuffer : register(b3)
+{
+    float4 Surface;
+    float4 Albedo;
+    float4 DebugView;
+};
+
+struct PS_INPUT
+{
+    float4 Pos : SV_POSITION;
+    float3 WorldPos : TEXCOORD0;
+    float3 Normal : TEXCOORD1;
+    float2 TexCoord : TEXCOORD2;
+    float3 Tangent : TEXCOORD3;
+    float3 Bitangent : TEXCOORD4;
+    float3 CameraPos : TEXCOORD5;
+};
+
+float3 CalculateNormalFromMap(float3 normal, float3 tangent, float3 bitangent, float2 texCoord, float normalStrength)
+{
+    float3 mapNormal = normalMap.Sample(samplerState, texCoord).xyz * 2.0f - 1.0f;
+    mapNormal.xy *= normalStrength;
+    mapNormal.z = sqrt(saturate(1.0f - dot(mapNormal.xy, mapNormal.xy)));
+    float3x3 TBN = float3x3(normalize(tangent), normalize(bitangent), normalize(normal));
+    return normalize(mul(mapNormal, TBN));
+};
+
+float DistributionGGX(float3 N, float3 H, float roughness)
+{
+    float a = roughness * roughness;
+    float a2 = a * a;
+    float NdotH = saturate(dot(N, H));
+    float NdotH2 = NdotH * NdotH;
+    float denom = NdotH2 * (a2 - 1.0f) + 1.0f;
+    return a2 / max(PI * denom * denom, 1e-5f);
+};
+
+float GeometrySchlickGGX(float NdotV, float roughness)
+{
+    float r = roughness + 1.0f;
+    float k = (r * r) / 8.0f;
+    return NdotV / max(NdotV * (1.0f - k) + k, 1e-5f);
+};
+
+float GeometrySmith(float3 N, float3 V, float3 L, float roughness)
+{
+    float NdotV = saturate(dot(N, V));
+    float NdotL = saturate(dot(N, L));
+    return GeometrySchlickGGX(NdotV, roughness) * GeometrySchlickGGX(NdotL, roughness);
+};
+
+float3 FresnelSchlick(float cosTheta, float3 F0)
+{
+    return F0 + (1.0f - F0) * pow(1.0f - saturate(cosTheta), 5.0f);
+};
+
+float ComputePointLightFalloff(float distanceToLight, float range)
+{
+    float invDist2 = 1.0f / max(distanceToLight * distanceToLight, 1e-4f);
+    float rangeFade = saturate(1.0f - pow(distanceToLight / max(range, 1e-4f), 4.0f));
+    return invDist2 * rangeFade * rangeFade;
+};
+
+float4 main(PS_INPUT input) : SV_Target
+{
+    float metallic = saturate(Surface.x);
+    float roughness = max(saturate(Surface.y), MIN_ROUGHNESS);
+    float ao = saturate(Surface.z);
+    float normalStrength = max(Surface.w, 0.0f);
+
+    float useTextures = step(0.5f, Albedo.a);
+    float3 texAlbedo = diffuseTexture.Sample(samplerState, input.TexCoord).rgb;
+    float3 albedo = lerp(
+        saturate(Albedo.rgb),
+        saturate(texAlbedo * Albedo.rgb),
+        useTextures
+    );
+    float3 N = normalize(input.Normal);
+    if (useTextures > 0.5f)
+    {
+         N = CalculateNormalFromMap(
+         input.Normal,
+         input.Tangent,
+         input.Bitangent,
+         input.TexCoord,
+         normalStrength
+         );
+    }
+
+
+    float3 V = normalize(input.CameraPos - input.WorldPos);
+    float3 F0 = lerp(float3(0.04f, 0.04f, 0.04f), albedo, metallic);
+    int debugMode = (int)(DebugView.x + 0.5f);
+    float3 Lo = 0.0f;
+
+    [unroll]
+    for (int i = 0; i < 3; ++i)
+    {
+        float3 Lvec = lights[i].Position - input.WorldPos;
+        float distanceToLight = length(Lvec);
+        float3 L = Lvec / max(distanceToLight, 1e-4f);
+        float3 H = normalize(V + L);
+        float NdotL = saturate(dot(N, L));
+        float NdotV = saturate(dot(N, V));
+        if (NdotL <= 0.0f || NdotV <= 0.0f)
+            continue;
+        float attenuation = ComputePointLightFalloff(distanceToLight, lights[i].Range);
+        float3 radiance = lights[i].Color * lights[i].Intensity * attenuation;
+        
+        float NDF = DistributionGGX(N, H, roughness);
+        float G = GeometrySmith(N, V, L, roughness);
+        float3 F = FresnelSchlick(saturate(dot(H, V)), F0);
+        
+        if (debugMode == 1) // NDF
+        {
+             return float4((NDF.xxx) * radiance * NdotL, 1.0f);
+        }
+
+        if (debugMode == 2) // Geometry
+        {
+             return float4((G.xxx) * radiance * NdotL, 1.0f);
+        }
+
+        if (debugMode == 3) // Fresnel
+        {
+            return float4((F) * radiance * NdotL, 1.0f);
+        }
+
+        float3 numerator = NDF * G * F;
+        float denominator = max(4.0f * NdotV * NdotL, 1e-4f);
+        float3 specular = numerator / denominator;
+        float3 kS = F;
+        float3 kD = (1.0f - kS) * (1.0f - metallic);
+        float3 diffuse = kD * albedo / PI;
+        Lo += (diffuse + specular) * radiance * NdotL;
+    }
+    float3 ambient = 0.015f * albedo * ao;
+    float3 color = ambient + Lo;
+    return float4(color, 1.0f);
+}
