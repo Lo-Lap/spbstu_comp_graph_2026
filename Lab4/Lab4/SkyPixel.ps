@@ -10,6 +10,9 @@ struct VS_OUTPUT
 
 float4 main(VS_OUTPUT input) : SV_Target
 {
-	float3 color = environmentMap.Sample(samplerState, input.Dir).rgb;
+	//float3 color = environmentMap.Sample(samplerState, input.Dir).rgb;
+	float3 dir = normalize(input.Dir);
+	float3 color = environmentMap.Sample(samplerState, dir).rgb;
+
 	return float4(color, 1.0f);
 }

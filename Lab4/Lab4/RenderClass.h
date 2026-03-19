@@ -157,6 +157,7 @@ private:
         ID3D11ShaderResourceView** outCubeSRV
     );
     bool HasExtension(const std::wstring& path, const std::wstring& ext) const;
+    void ScanCubeMapsFolder();
 
     HRESULT ConfigureBackBuffer(UINT width, UINT height);
     void SetMVPBuffer();
@@ -279,5 +280,10 @@ private:
     int m_DebugViewMode;
 
     ID3D11PixelShader* m_pHdrToCubemapPS;
+
+    std::vector<std::wstring> m_environmentFiles;
+    std::vector<std::string> m_environmentFileNames;
+    int m_currentEnvIndex;
+    int m_prevEnvIndex;
 };
 #endif

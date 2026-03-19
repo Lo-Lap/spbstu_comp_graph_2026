@@ -440,7 +440,6 @@ HRESULT RenderClass::InitBufferShader()
 
     result = LoadEnvironmentMap(L"cubemaps/shanghai_bund_4k.hdr");
     // result = LoadEnvironmentMap(L"cubemaps/shanghai_box.dds");
-
     if (FAILED(result))
     {
         MessageBox(nullptr, L"HDR environment load failed", L"Error", MB_OK);
@@ -451,6 +450,19 @@ HRESULT RenderClass::InitBufferShader()
         OutputDebugString(L"HDR environment loaded successfully\n");
     }
 
+    ScanCubeMapsFolder();
+    std::string currentFilename = "shanghai_bund_4k.hdr";
+    m_currentEnvIndex = -1;
+    for (int i = 0; i < m_environmentFileNames.size(); ++i)
+    {
+        if (m_environmentFileNames[i] == currentFilename)
+        {
+            m_currentEnvIndex = i;
+            m_prevEnvIndex = m_currentEnvIndex;
+            break;
+        }
+    }
+
     D3D11_RASTERIZER_DESC rsDesc = {};
     rsDesc.FillMode = D3D11_FILL_SOLID;
     rsDesc.CullMode = D3D11_CULL_FRONT;
@@ -459,6 +471,7 @@ HRESULT RenderClass::InitBufferShader()
     result = m_pDevice->CreateRasterizerState(&rsDesc, &m_pSkyRasterState);
     if (FAILED(result))
         return result;
+
     D3D11_DEPTH_STENCIL_DESC dsDesc = {};
     dsDesc.DepthEnable = TRUE;
     dsDesc.DepthWriteMask = D3D11_DEPTH_WRITE_MASK_ZERO;
@@ -758,6 +771,9 @@ void RenderClass::Terminate()
     {
         ShutdownImGui();
     }
+
+    m_environmentFiles.clear();
+    m_environmentFileNames.clear();
 
     TerminateBufferShader();
 
@@ -1162,6 +1178,7 @@ HRESULT RenderClass::ConvertHDRIToCubemap(
 {
     if (!equirectSRV || !outCubeSRV)
         return E_INVALIDARG;
+
     *outCubeSRV = nullptr;
     D3D11_TEXTURE2D_DESC cubeDesc = {};
     cubeDesc.Width = cubeSize;
@@ -1173,6 +1190,7 @@ HRESULT RenderClass::ConvertHDRIToCubemap(
     cubeDesc.Usage = D3D11_USAGE_DEFAULT;
     cubeDesc.BindFlags = D3D11_BIND_SHADER_RESOURCE | D3D11_BIND_RENDER_TARGET;
     cubeDesc.MiscFlags = D3D11_RESOURCE_MISC_TEXTURECUBE | D3D11_RESOURCE_MISC_GENERATE_MIPS;
+
     ID3D11Texture2D* cubeTex = nullptr;
     HRESULT hr = m_pDevice->CreateTexture2D(&cubeDesc, nullptr, &cubeTex);
     if (FAILED(hr))
@@ -1198,6 +1216,7 @@ HRESULT RenderClass::ConvertHDRIToCubemap(
     cubeSRVDesc.ViewDimension = D3D11_SRV_DIMENSION_TEXTURECUBE;
     cubeSRVDesc.TextureCube.MostDetailedMip = 0;
     cubeSRVDesc.TextureCube.MipLevels = -1;
+
     ID3D11ShaderResourceView* cubeSRV = nullptr;
     hr = m_pDevice->CreateShaderResourceView(cubeTex, &cubeSRVDesc, &cubeSRV);
     if (FAILED(hr))
@@ -1205,6 +1224,7 @@ HRESULT RenderClass::ConvertHDRIToCubemap(
         cubeTex->Release();
         return hr;
     }
+
     ID3D11RenderTargetView* faceRTV[6] = {};
     for (UINT i = 0; i < 6; ++i)
     {
@@ -1214,16 +1234,42 @@ HRESULT RenderClass::ConvertHDRIToCubemap(
         rtvDesc.Texture2DArray.MipSlice = 0;
         rtvDesc.Texture2DArray.FirstArraySlice = i;
         rtvDesc.Texture2DArray.ArraySize = 1;
+
         hr = m_pDevice->CreateRenderTargetView(cubeTex, &rtvDesc, &faceRTV[i]);
         if (FAILED(hr))
         {
             for (UINT k = 0; k < i; ++k)
-                if (faceRTV[k]) faceRTV[k]->Release();
+                if (faceRTV[k]) 
+                    faceRTV[k]->Release();
             cubeSRV->Release();
             cubeTex->Release();
             return hr;
         }
     }
+
+    ID3D11RasterizerState* pOldRS = nullptr;
+    m_pDeviceContext->RSGetState(&pOldRS);
+
+    D3D11_RASTERIZER_DESC rsDesc = {};
+    rsDesc.FillMode = D3D11_FILL_SOLID;
+    rsDesc.CullMode = D3D11_CULL_FRONT;
+    rsDesc.FrontCounterClockwise = FALSE;
+    rsDesc.DepthClipEnable = TRUE;
+
+    ID3D11RasterizerState* pCubeRS = nullptr;
+    hr = m_pDevice->CreateRasterizerState(&rsDesc, &pCubeRS);
+    if (FAILED(hr))
+    {
+        for (UINT i = 0; i < 6; ++i) 
+            faceRTV[i]->Release();
+        cubeSRV->Release();
+        cubeTex->Release();
+        if (pOldRS) 
+            pOldRS->Release();
+        return hr;
+    }
+    m_pDeviceContext->RSSetState(pCubeRS);
+
     D3D11_VIEWPORT vp = {};
     vp.TopLeftX = 0.0f;
     vp.TopLeftY = 0.0f;
@@ -1232,16 +1278,22 @@ HRESULT RenderClass::ConvertHDRIToCubemap(
     vp.MinDepth = 0.0f;
     vp.MaxDepth = 1.0f;
     m_pDeviceContext->RSSetViewports(1, &vp);
+
     UINT stride = sizeof(CubeVertex);
     UINT offset = 0;
     m_pDeviceContext->IASetVertexBuffers(0, 1, &m_pVertexBuffer, &stride, &offset);
     m_pDeviceContext->IASetIndexBuffer(m_pIndexBuffer, DXGI_FORMAT_R16_UINT, 0);
     m_pDeviceContext->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
     m_pDeviceContext->IASetInputLayout(m_pLayout);
+
     m_pDeviceContext->VSSetShader(m_pSkyVertexShader, nullptr, 0);
     m_pDeviceContext->PSSetShader(m_pHdrToCubemapPS, nullptr, 0);
     m_pDeviceContext->PSSetShaderResources(0, 1, &equirectSRV);
     m_pDeviceContext->PSSetSamplers(0, 1, &m_pSamplerState);
+
+    m_pDeviceContext->VSSetConstantBuffers(0, 1, &m_pModelBuffer);
+    m_pDeviceContext->VSSetConstantBuffers(1, 1, &m_pVPBuffer);
+
     XMMATRIX proj = XMMatrixPerspectiveFovLH(XM_PIDIV2, 1.0f, 0.1f, 10.0f);
     XMVECTOR eye = XMVectorZero();
     const XMVECTOR targets[6] =
@@ -1257,7 +1309,7 @@ HRESULT RenderClass::ConvertHDRIToCubemap(
     {
         XMVectorSet(0, 1, 0, 0),
         XMVectorSet(0, 1, 0, 0),
-        XMVectorSet(0, 0,-1, 0),
+        XMVectorSet(0, 0, -1, 0),
         XMVectorSet(0, 0, 1, 0),
         XMVectorSet(0, 1, 0, 0),
         XMVectorSet(0, 1, 0, 0)
@@ -1265,6 +1317,7 @@ HRESULT RenderClass::ConvertHDRIToCubemap(
     XMMATRIX model = XMMatrixIdentity();
     XMMATRIX modelT = XMMatrixTranspose(model);
     m_pDeviceContext->UpdateSubresource(m_pModelBuffer, 0, nullptr, &modelT, 0, 0);
+
     for (UINT face = 0; face < 6; ++face)
     {
         float clearColor[4] = { 0, 0, 0, 1 };
@@ -1281,13 +1334,24 @@ HRESULT RenderClass::ConvertHDRIToCubemap(
         m_pDeviceContext->Unmap(m_pVPBuffer, 0);
         m_pDeviceContext->DrawIndexed(m_indexCount, 0, 0);
     }
+
     ID3D11ShaderResourceView* nullSRV = nullptr;
     m_pDeviceContext->PSSetShaderResources(0, 1, &nullSRV);
+    
     if (SUCCEEDED(hr))
         m_pDeviceContext->GenerateMips(cubeSRV);
+
+    m_pDeviceContext->RSSetState(pOldRS);
+    if (pOldRS) 
+        pOldRS->Release();
+    if (pCubeRS) 
+        pCubeRS->Release();
+
     for (UINT i = 0; i < 6; ++i)
-        if (faceRTV[i]) faceRTV[i]->Release();
+        if (faceRTV[i])
+            faceRTV[i]->Release();
     cubeTex->Release();
+
     if (FAILED(hr))
     {
         cubeSRV->Release();
@@ -1332,6 +1396,28 @@ HRESULT RenderClass::LoadEnvironmentMap(const wchar_t* path)
     return E_FAIL;
 }
 
+void RenderClass::ScanCubeMapsFolder()
+{
+    m_environmentFiles.clear();
+    m_environmentFileNames.clear();
+
+    std::filesystem::path folder(L"cubemaps");
+    if (!std::filesystem::exists(folder))
+        return;
+
+    for (const auto& entry : std::filesystem::directory_iterator(folder))
+    {
+        if (entry.is_regular_file())
+        {
+            auto ext = ToLowerCopy(entry.path().extension().wstring());
+            if (ext == L".hdr")
+            {
+                m_environmentFiles.push_back(entry.path().wstring());
+                m_environmentFileNames.push_back(entry.path().filename().string());
+            }
+        }
+    }
+}
 
 void RenderClass::Render()
 {
@@ -1983,8 +2069,28 @@ void RenderClass::RenderImGui()
          "Fresnel Function"
     };
     ImGui::Combo("View mode", &m_DebugViewMode, debugModes, IM_ARRAYSIZE(debugModes));
-
     ImGui::End();
+
+    ImGui::Begin("Environment");
+    if (!m_environmentFileNames.empty())
+    {
+        std::vector<const char*> items;
+        for (const auto& name : m_environmentFileNames)
+            items.push_back(name.c_str());
+
+        if (ImGui::Combo("HDRI map", &m_currentEnvIndex, items.data(), static_cast<int>(items.size())))
+        {
+            if (m_currentEnvIndex >= 0 && 
+                m_currentEnvIndex < static_cast<int>(m_environmentFiles.size()) && 
+                m_currentEnvIndex != m_prevEnvIndex)
+            {
+                LoadEnvironmentMap(m_environmentFiles[m_currentEnvIndex].c_str());
+                m_prevEnvIndex = m_currentEnvIndex;
+            }
+        }
+    }
+    ImGui::End();
+
     ImGui::Render();
     ImGui_ImplDX11_RenderDrawData(ImGui::GetDrawData());
 }
