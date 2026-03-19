@@ -1,5 +1,6 @@
 Texture2D diffuseTexture : register(t0);
 Texture2D normalMap : register(t1);
+TextureCube irradianceMap : register(t2);
 SamplerState samplerState : register(s0);
 static const float PI = 3.14159265359f;
 static const float MIN_ROUGHNESS = 0.045f;
@@ -120,8 +121,9 @@ float4 main(PS_INPUT input) : SV_Target
         float3 L = Lvec / max(distanceToLight, 1e-4f);
         float3 H = normalize(V + L);
         float NdotL = saturate(dot(N, L));
-        float NdotV = saturate(dot(N, V));
-        if (NdotL <= 0.0f || NdotV <= 0.0f)
+        //float NdotV = saturate(dot(N, V));
+        float NdotV_local = saturate(dot(N, V));
+        if (NdotL <= 0.0f || NdotV_local <= 0.0f)
             continue;
         float attenuation = ComputePointLightFalloff(distanceToLight, lights[i].Range);
         float3 radiance = lights[i].Color * lights[i].Intensity * attenuation;
@@ -146,14 +148,25 @@ float4 main(PS_INPUT input) : SV_Target
         }
 
         float3 numerator = NDF * G * F;
-        float denominator = max(4.0f * NdotV * NdotL, 1e-4f);
+        //float denominator = max(4.0f * NdotV * NdotL, 1e-4f);
+        float denominator = max(4.0f * NdotV_local * NdotL, 1e-4f);
         float3 specular = numerator / denominator;
         float3 kS = F;
         float3 kD = (1.0f - kS) * (1.0f - metallic);
         float3 diffuse = kD * albedo / PI;
         Lo += (diffuse + specular) * radiance * NdotL;
     }
-    float3 ambient = 0.015f * albedo * ao;
+    //float3 ambient = 0.015f * albedo * ao;
+    //float3 color = ambient + Lo;
+    //return float4(color, 1.0f);
+
+    float NdotV = saturate(dot(N, V));
+    float3 F_ambient = FresnelSchlick(NdotV, F0);
+    float3 kS_ambient = F_ambient;
+    float3 kD_ambient = (1.0f - kS_ambient) * (1.0f - metallic);
+    float3 irradiance = irradianceMap.Sample(samplerState, N).rgb;
+    float3 diffuseIBL = irradiance * albedo;
+    float3 ambient = kD_ambient * diffuseIBL * ao;
     float3 color = ambient + Lo;
     return float4(color, 1.0f);
 }

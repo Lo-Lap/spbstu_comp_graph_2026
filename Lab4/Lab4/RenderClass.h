@@ -97,6 +97,10 @@ public:
         m_EnableTextures(true),
         m_DebugViewMode(DebugView_Final),
 
+
+        m_pIrradianceSRV(nullptr),
+        m_pIrradianceConvolutionPS(nullptr),
+
         m_pHdrToCubemapPS(nullptr)
     {
         for (int i = 0; i < kSphereCount; ++i)
@@ -156,6 +160,13 @@ private:
         UINT cubeSize,
         ID3D11ShaderResourceView** outCubeSRV
     );
+
+    HRESULT ConvolveCubemapToIrradiance(
+        ID3D11ShaderResourceView* environmentCubeSRV,
+        UINT irradianceSize,
+        ID3D11ShaderResourceView** outIrradianceSRV
+    );
+
     bool HasExtension(const std::wstring& path, const std::wstring& ext) const;
     void ScanCubeMapsFolder();
 
@@ -285,5 +296,8 @@ private:
     std::vector<std::string> m_environmentFileNames;
     int m_currentEnvIndex;
     int m_prevEnvIndex;
+
+    ID3D11ShaderResourceView* m_pIrradianceSRV;
+    ID3D11PixelShader* m_pIrradianceConvolutionPS;
 };
 #endif

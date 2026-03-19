@@ -200,6 +200,15 @@
     <CopyFileToFolders Include="cubemaps\sunset_jhbcentral_4k.hdr">
       <Filter>cubemaps</Filter>
     </CopyFileToFolders>
+    <CopyFileToFolders Include="HdrToCubemap.ps">
+      <Filter>shader</Filter>
+    </CopyFileToFolders>
+    <CopyFileToFolders Include="IrradianceConvolution.ps">
+      <Filter>shader</Filter>
+    </CopyFileToFolders>
+    <CopyFileToFolders Include="cubemaps\ferndale_studio_04_4k.hdr">
+      <Filter>cubemaps</Filter>
+    </CopyFileToFolders>
   </ItemGroup>
   <ItemGroup>
     <None Include="imgui\imgui.vcxproj">
@@ -210,9 +219,6 @@
     </None>
     <None Include="imgui\imgui.vcxproj.user">
       <Filter>imgui</Filter>
-    </None>
-    <None Include="HdrToCubemap.ps">
-      <Filter>shader</Filter>
     </None>
   </ItemGroup>
 </Project>

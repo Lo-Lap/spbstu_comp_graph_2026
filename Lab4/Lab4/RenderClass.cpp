@@ -425,6 +425,10 @@ HRESULT RenderClass::InitBufferShader()
     if (FAILED(result))
         return result;
 
+    result = CompileShader(L"IrradianceConvolution.ps", nullptr, &m_pIrradianceConvolutionPS);
+    if (FAILED(result))
+        return result;
+
     D3D11_SAMPLER_DESC sampDesc = {};
     sampDesc.Filter = D3D11_FILTER_MIN_MAG_MIP_LINEAR;
     sampDesc.AddressU = D3D11_TEXTURE_ADDRESS_WRAP;
@@ -824,6 +828,12 @@ void RenderClass::Terminate()
         m_pHDRSceneSRV = nullptr;
     }
 
+    if (m_pIrradianceSRV)
+    {
+        m_pIrradianceSRV->Release();
+        m_pIrradianceSRV = nullptr;
+    }
+
     if (m_pHDRSceneRTV)
     {
         m_pHDRSceneRTV->Release();
@@ -926,6 +936,12 @@ void RenderClass::TerminateBufferShader()
     {
         m_pToneMapPS->Release();
         m_pToneMapPS = nullptr;
+    }
+
+    if (m_pIrradianceConvolutionPS)
+    {
+        m_pIrradianceConvolutionPS->Release();
+        m_pIrradianceConvolutionPS = nullptr;
     }
 
     if (m_pLayout)
@@ -1385,9 +1401,15 @@ HRESULT RenderClass::LoadEnvironmentMap(const wchar_t* path)
         m_pEnvironmentSRV->Release();
         m_pEnvironmentSRV = nullptr;
     }
+    if (m_pIrradianceSRV)
+    {
+        m_pIrradianceSRV->Release();
+        m_pIrradianceSRV = nullptr;
+    }
+    HRESULT hr = E_FAIL;
     if (HasExtension(path, L".dds"))
     {
-        return DirectX::CreateDDSTextureFromFileEx(
+        hr = DirectX::CreateDDSTextureFromFileEx(
             m_pDevice,
             path,
             0,
@@ -1400,17 +1422,23 @@ HRESULT RenderClass::LoadEnvironmentMap(const wchar_t* path)
             &m_pEnvironmentSRV
         );
     }
-    if (HasExtension(path, L".hdr"))
+    else if (HasExtension(path, L".hdr"))
     {
         ID3D11ShaderResourceView* hdr2DSRV = nullptr;
-        HRESULT hr = LoadHDRTexture2D(path, &hdr2DSRV);
+        hr = LoadHDRTexture2D(path, &hdr2DSRV);
         if (FAILED(hr))
             return hr;
         hr = ConvertHDRIToCubemap(hdr2DSRV, 1024, &m_pEnvironmentSRV);
         hdr2DSRV->Release();
-        return hr;
     }
-    return E_FAIL;
+    if (FAILED(hr))
+        return hr;
+    hr = ConvolveCubemapToIrradiance(
+        m_pEnvironmentSRV,
+        32, 
+        &m_pIrradianceSRV
+    );
+    return hr;
 }
 
 void RenderClass::ScanCubeMapsFolder()
@@ -1498,6 +1526,8 @@ void RenderClass::Render()
         m_pDeviceContext->VSSetShader(m_pVertexShader, nullptr, 0);
         m_pDeviceContext->PSSetShader(m_pPixelShader, nullptr, 0);
     }
+
+    m_pDeviceContext->PSSetShaderResources(2, 1, &m_pIrradianceSRV);
 
     {
         ScopedEvent evt(m_pAnnotation, L"Update MVP");
@@ -1732,6 +1762,11 @@ void RenderClass::SetMVPBuffer()
 
         m_pDeviceContext->DrawIndexed(m_indexCount, 0, 0);
     }
+
+    ID3D11ShaderResourceView* nullSRV = nullptr;
+    m_pDeviceContext->PSSetShaderResources(0, 1, &nullSRV);
+    m_pDeviceContext->PSSetShaderResources(1, 1, &nullSRV);
+    m_pDeviceContext->PSSetShaderResources(2, 1, &nullSRV);
 
     m_pDeviceContext->PSSetShader(m_pLightPixelShader, nullptr, 0);
     m_pDeviceContext->PSSetConstantBuffers(0, 1, &m_pColorBuffer);
@@ -2113,3 +2148,193 @@ void RenderClass::RenderImGui()
 }
 
 
+HRESULT RenderClass::ConvolveCubemapToIrradiance(
+    ID3D11ShaderResourceView* environmentCubeSRV,
+    UINT irradianceSize,
+    ID3D11ShaderResourceView** outIrradianceSRV)
+{
+    if (!environmentCubeSRV || !outIrradianceSRV)
+        return E_INVALIDARG;
+
+    *outIrradianceSRV = nullptr;
+
+    UINT oldViewportCount = 1;
+    D3D11_VIEWPORT oldViewport = {};
+    m_pDeviceContext->RSGetViewports(&oldViewportCount, &oldViewport);
+
+    ID3D11RenderTargetView* oldRTV = nullptr;
+    ID3D11DepthStencilView* oldDSV = nullptr;
+    m_pDeviceContext->OMGetRenderTargets(1, &oldRTV, &oldDSV);
+
+    ID3D11RasterizerState* pOldRS = nullptr;
+    m_pDeviceContext->RSGetState(&pOldRS);
+
+    D3D11_TEXTURE2D_DESC cubeDesc = {};
+    cubeDesc.Width = irradianceSize;
+    cubeDesc.Height = irradianceSize;
+    cubeDesc.MipLevels = 1;
+    cubeDesc.ArraySize = 6;
+    cubeDesc.Format = DXGI_FORMAT_R16G16B16A16_FLOAT;
+    cubeDesc.SampleDesc.Count = 1;
+    cubeDesc.Usage = D3D11_USAGE_DEFAULT;
+    cubeDesc.BindFlags = D3D11_BIND_SHADER_RESOURCE | D3D11_BIND_RENDER_TARGET;
+    cubeDesc.MiscFlags = D3D11_RESOURCE_MISC_TEXTURECUBE;
+
+    ID3D11Texture2D* irradianceTex = nullptr;
+    HRESULT hr = m_pDevice->CreateTexture2D(&cubeDesc, nullptr, &irradianceTex);
+    if (FAILED(hr))
+        return hr;
+
+    D3D11_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
+    srvDesc.Format = cubeDesc.Format;
+    srvDesc.ViewDimension = D3D11_SRV_DIMENSION_TEXTURECUBE;
+    srvDesc.TextureCube.MostDetailedMip = 0;
+    srvDesc.TextureCube.MipLevels = 1;
+
+    ID3D11ShaderResourceView* irradianceSRV = nullptr;
+    hr = m_pDevice->CreateShaderResourceView(irradianceTex, &srvDesc, &irradianceSRV);
+    if (FAILED(hr))
+    {
+        irradianceTex->Release();
+        return hr;
+    }
+
+    ID3D11RenderTargetView* faceRTV[6] = {};
+    for (UINT i = 0; i < 6; ++i)
+    {
+        D3D11_RENDER_TARGET_VIEW_DESC rtvDesc = {};
+        rtvDesc.Format = cubeDesc.Format;
+        rtvDesc.ViewDimension = D3D11_RTV_DIMENSION_TEXTURE2DARRAY;
+        rtvDesc.Texture2DArray.MipSlice = 0;
+        rtvDesc.Texture2DArray.FirstArraySlice = i;
+        rtvDesc.Texture2DArray.ArraySize = 1;
+
+        hr = m_pDevice->CreateRenderTargetView(irradianceTex, &rtvDesc, &faceRTV[i]);
+        if (FAILED(hr))
+        {
+            for (UINT k = 0; k < i; ++k)
+                if (faceRTV[k]) faceRTV[k]->Release();
+            irradianceSRV->Release();
+            irradianceTex->Release();
+            return hr;
+        }
+    }
+
+    D3D11_RASTERIZER_DESC rsDesc = {};
+    rsDesc.FillMode = D3D11_FILL_SOLID;
+    rsDesc.CullMode = D3D11_CULL_FRONT;
+    rsDesc.FrontCounterClockwise = FALSE;
+    rsDesc.DepthClipEnable = TRUE;
+
+    ID3D11RasterizerState* pCubeRS = nullptr;
+    hr = m_pDevice->CreateRasterizerState(&rsDesc, &pCubeRS);
+    if (FAILED(hr))
+    {
+        for (UINT i = 0; i < 6; ++i)
+            if (faceRTV[i]) faceRTV[i]->Release();
+        irradianceSRV->Release();
+        irradianceTex->Release();
+        if (pOldRS) pOldRS->Release();
+        return hr;
+    }
+
+    m_pDeviceContext->RSSetState(pCubeRS);
+
+    D3D11_VIEWPORT vp = {};
+    vp.TopLeftX = 0.0f;
+    vp.TopLeftY = 0.0f;
+    vp.Width = static_cast<float>(irradianceSize);
+    vp.Height = static_cast<float>(irradianceSize);
+    vp.MinDepth = 0.0f;
+    vp.MaxDepth = 1.0f;
+    m_pDeviceContext->RSSetViewports(1, &vp);
+
+    UINT stride = sizeof(CubeVertex);
+    UINT offset = 0;
+    m_pDeviceContext->IASetVertexBuffers(0, 1, &m_pVertexBuffer, &stride, &offset);
+    m_pDeviceContext->IASetIndexBuffer(m_pIndexBuffer, DXGI_FORMAT_R16_UINT, 0);
+    m_pDeviceContext->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+    m_pDeviceContext->IASetInputLayout(m_pLayout);
+
+    m_pDeviceContext->VSSetShader(m_pSkyVertexShader, nullptr, 0);
+    m_pDeviceContext->PSSetShader(m_pIrradianceConvolutionPS, nullptr, 0);
+    m_pDeviceContext->PSSetShaderResources(0, 1, &environmentCubeSRV);
+    m_pDeviceContext->PSSetSamplers(0, 1, &m_pSamplerState);
+    m_pDeviceContext->VSSetConstantBuffers(0, 1, &m_pModelBuffer);
+    m_pDeviceContext->VSSetConstantBuffers(1, 1, &m_pVPBuffer);
+
+    XMMATRIX proj = XMMatrixPerspectiveFovLH(XM_PIDIV2, 1.0f, 0.1f, 10.0f);
+    XMVECTOR eye = XMVectorZero();
+
+    const XMVECTOR targets[6] =
+    {
+        XMVectorSet(1,  0,  0, 0),
+        XMVectorSet(-1,  0,  0, 0),
+        XMVectorSet(0,  1,  0, 0),
+        XMVectorSet(0, -1,  0, 0),
+        XMVectorSet(0,  0,  1, 0),
+        XMVectorSet(0,  0, -1, 0)
+    };
+
+    const XMVECTOR ups[6] =
+    {
+        XMVectorSet(0, 1, 0, 0),
+        XMVectorSet(0, 1, 0, 0),
+        XMVectorSet(0, 0,-1, 0),
+        XMVectorSet(0, 0, 1, 0),
+        XMVectorSet(0, 1, 0, 0),
+        XMVectorSet(0, 1, 0, 0)
+    };
+
+    XMMATRIX model = XMMatrixIdentity();
+    XMMATRIX modelT = XMMatrixTranspose(model);
+    m_pDeviceContext->UpdateSubresource(m_pModelBuffer, 0, nullptr, &modelT, 0, 0);
+
+    for (UINT face = 0; face < 6; ++face)
+    {
+        float clearColor[4] = { 0, 0, 0, 1 };
+        m_pDeviceContext->OMSetRenderTargets(1, &faceRTV[face], nullptr);
+        m_pDeviceContext->ClearRenderTargetView(faceRTV[face], clearColor);
+
+        CameraBuffer cb = {};
+        cb.vp = XMMatrixTranspose(XMMatrixLookToLH(eye, targets[face], ups[face]) * proj);
+        cb.cameraPos = XMFLOAT3(0, 0, 0);
+
+        D3D11_MAPPED_SUBRESOURCE mapped = {};
+        hr = m_pDeviceContext->Map(m_pVPBuffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped);
+        if (FAILED(hr))
+            break;
+
+        memcpy(mapped.pData, &cb, sizeof(cb));
+        m_pDeviceContext->Unmap(m_pVPBuffer, 0);
+
+        m_pDeviceContext->DrawIndexed(m_indexCount, 0, 0);
+    }
+
+    ID3D11ShaderResourceView* nullSRV = nullptr;
+    m_pDeviceContext->PSSetShaderResources(0, 1, &nullSRV);
+
+    m_pDeviceContext->RSSetState(pOldRS);
+    if (pOldRS) pOldRS->Release();
+    if (pCubeRS) pCubeRS->Release();
+
+    m_pDeviceContext->OMSetRenderTargets(1, &oldRTV, oldDSV);
+    m_pDeviceContext->RSSetViewports(1, &oldViewport);
+
+    if (oldRTV) oldRTV->Release();
+    if (oldDSV) oldDSV->Release();
+
+    for (UINT i = 0; i < 6; ++i)
+        if (faceRTV[i]) faceRTV[i]->Release();
+
+    irradianceTex->Release();
+
+    if (FAILED(hr))
+    {
+        irradianceSRV->Release();
+        return hr;
+    }
+
+    *outIrradianceSRV = irradianceSRV;
+    return S_OK;
+ }
