@@ -1179,6 +1179,14 @@ HRESULT RenderClass::ConvertHDRIToCubemap(
     if (!equirectSRV || !outCubeSRV)
         return E_INVALIDARG;
 
+    UINT oldViewportCount = 1;
+    D3D11_VIEWPORT oldViewport = {};
+    m_pDeviceContext->RSGetViewports(&oldViewportCount, &oldViewport);
+
+    ID3D11RenderTargetView* oldRTV = nullptr;
+    ID3D11DepthStencilView* oldDSV = nullptr;
+    m_pDeviceContext->OMGetRenderTargets(1, &oldRTV, &oldDSV);
+
     *outCubeSRV = nullptr;
     D3D11_TEXTURE2D_DESC cubeDesc = {};
     cubeDesc.Width = cubeSize;
@@ -1358,6 +1366,15 @@ HRESULT RenderClass::ConvertHDRIToCubemap(
         return hr;
     }
     *outCubeSRV = cubeSRV;
+
+    m_pDeviceContext->OMSetRenderTargets(1, &oldRTV, oldDSV);
+    m_pDeviceContext->RSSetViewports(1, &oldViewport);
+
+    if (oldRTV) 
+        oldRTV->Release();
+    if (oldDSV) 
+        oldDSV->Release();
+
     return S_OK;
 }
 
