@@ -322,6 +322,11 @@
       <DestinationFolders Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">$(OutDir)/cubemaps</DestinationFolders>
       <DestinationFolders Condition="'$(Configuration)|$(Platform)'=='Release|x64'">$(OutDir)/cubemaps</DestinationFolders>
     </CopyFileToFolders>
+    <CopyFileToFolders Include="BRDFIntegration.ps">
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">false</ExcludedFromBuild>
+      <FileType>Document</FileType>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">false</ExcludedFromBuild>
+    </CopyFileToFolders>
     <None Include="imgui\imgui.vcxproj" />
     <None Include="imgui\imgui.vcxproj.filters" />
     <None Include="imgui\imgui.vcxproj.user" />

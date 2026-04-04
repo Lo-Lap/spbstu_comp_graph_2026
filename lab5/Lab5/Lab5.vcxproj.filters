@@ -209,6 +209,9 @@
     <CopyFileToFolders Include="cubemaps\ferndale_studio_04_4k.hdr">
       <Filter>cubemaps</Filter>
     </CopyFileToFolders>
+    <CopyFileToFolders Include="BRDFIntegration.ps">
+      <Filter>shader</Filter>
+    </CopyFileToFolders>
   </ItemGroup>
   <ItemGroup>
     <None Include="imgui\imgui.vcxproj">

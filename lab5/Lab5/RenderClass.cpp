@@ -448,6 +448,10 @@ HRESULT RenderClass::InitBufferShader()
     if (FAILED(result))
         return result;
 
+    result = CompileShader(L"BRDFIntegration.ps", nullptr, &m_pBRDFIntegrationPS);
+    if (FAILED(result))
+        return result;
+
     D3D11_SAMPLER_DESC sampDesc = {};
     sampDesc.Filter = D3D11_FILTER_MIN_MAG_MIP_LINEAR;
     sampDesc.AddressU = D3D11_TEXTURE_ADDRESS_WRAP;
@@ -471,6 +475,16 @@ HRESULT RenderClass::InitBufferShader()
     else
     {
         OutputDebugString(L"HDR environment loaded successfully\n");
+    }
+
+    if (!m_pBRDFLUTSRV)
+    {
+        result = GenerateBRDFLUT(512, 512, &m_pBRDFLUTSRV);
+        if (FAILED(result))
+        {
+            MessageBox(nullptr, L"BRDF LUT generation failed", L"Error", MB_OK);
+            return result;
+        }
     }
 
     ScanCubeMapsFolder();
@@ -800,6 +814,17 @@ void RenderClass::Terminate()
 
     TerminateBufferShader();
 
+    if (m_pBRDFLUTSRV)
+    {
+        m_pBRDFLUTSRV->Release();
+        m_pBRDFLUTSRV = nullptr;
+    }
+    if (m_pPrefilteredEnvSRV)
+    {
+        m_pPrefilteredEnvSRV->Release();
+        m_pPrefilteredEnvSRV = nullptr;
+    }
+
     for (int i = 0; i < 16; i++)
     {
         if (m_pLuminanceTextures[i])
@@ -1102,6 +1127,18 @@ void RenderClass::TerminateBufferShader()
         m_pSpecularPrefilterCB->Release();
         m_pSpecularPrefilterCB = nullptr;
     }
+
+    if (m_pSpecularPrefilterPS)
+    {
+        m_pSpecularPrefilterPS->Release();
+        m_pSpecularPrefilterPS = nullptr;
+    }
+    if (m_pBRDFIntegrationPS)
+    {
+        m_pBRDFIntegrationPS->Release();
+        m_pBRDFIntegrationPS = nullptr;
+    }
+
 
 }
 
@@ -1463,7 +1500,7 @@ HRESULT RenderClass::LoadEnvironmentMap(const wchar_t* path)
             DirectX::DDS_LOADER_FORCE_SRGB,
             nullptr,
             &m_pEnvironmentSRV
-        );
+            );
     }
     else if (HasExtension(path, L".hdr"))
     {
@@ -1485,13 +1522,10 @@ HRESULT RenderClass::LoadEnvironmentMap(const wchar_t* path)
     if (FAILED(hr))
         return hr;
 
-    const UINT prefilterSize = 256;
-    const UINT prefilterMipLevels = 5;
-
     hr = PrefilterCubemapSpecular(
         m_pEnvironmentSRV,
-        prefilterSize,
-        prefilterMipLevels,
+        256,
+        5,
         &m_pPrefilteredEnvSRV
     );
     if (FAILED(hr))
@@ -1499,6 +1533,7 @@ HRESULT RenderClass::LoadEnvironmentMap(const wchar_t* path)
 
     return S_OK;
 }
+
 
 void RenderClass::ScanCubeMapsFolder()
 {
@@ -1587,6 +1622,9 @@ void RenderClass::Render()
     }
 
     m_pDeviceContext->PSSetShaderResources(2, 1, &m_pIrradianceSRV);
+    m_pDeviceContext->PSSetShaderResources(3, 1, &m_pPrefilteredEnvSRV);
+    m_pDeviceContext->PSSetShaderResources(4, 1, &m_pBRDFLUTSRV);
+
 
     {
         ScopedEvent evt(m_pAnnotation, L"Update MVP");
@@ -1826,6 +1864,8 @@ void RenderClass::SetMVPBuffer()
     m_pDeviceContext->PSSetShaderResources(0, 1, &nullSRV);
     m_pDeviceContext->PSSetShaderResources(1, 1, &nullSRV);
     m_pDeviceContext->PSSetShaderResources(2, 1, &nullSRV);
+    m_pDeviceContext->PSSetShaderResources(3, 1, &nullSRV);
+    m_pDeviceContext->PSSetShaderResources(4, 1, &nullSRV);
 
     m_pDeviceContext->PSSetShader(m_pLightPixelShader, nullptr, 0);
     m_pDeviceContext->PSSetConstantBuffers(0, 1, &m_pColorBuffer);
@@ -2397,6 +2437,88 @@ HRESULT RenderClass::ConvolveCubemapToIrradiance(
     return S_OK;
  }
 
+ HRESULT RenderClass::GenerateBRDFLUT(
+     UINT lutWidth,
+     UINT lutHeight,
+     ID3D11ShaderResourceView** outBRDFLUTSRV)
+ {
+     if (!outBRDFLUTSRV)
+         return E_INVALIDARG;
+     *outBRDFLUTSRV = nullptr;
+     ID3D11RenderTargetView* oldRTV = nullptr;
+     ID3D11DepthStencilView* oldDSV = nullptr;
+     m_pDeviceContext->OMGetRenderTargets(1, &oldRTV, &oldDSV);
+     UINT oldViewportCount = 1;
+     D3D11_VIEWPORT oldViewport = {};
+     m_pDeviceContext->RSGetViewports(&oldViewportCount, &oldViewport);
+     ID3D11InputLayout* oldLayout = nullptr;
+     ID3D11VertexShader* oldVS = nullptr;
+     ID3D11PixelShader * oldPS = nullptr;
+     m_pDeviceContext->IAGetInputLayout(&oldLayout);
+     m_pDeviceContext->VSGetShader(&oldVS, nullptr, nullptr);
+     m_pDeviceContext->PSGetShader(&oldPS, nullptr, nullptr);
+     D3D11_TEXTURE2D_DESC texDesc = {};
+     texDesc.Width = lutWidth;
+     texDesc.Height = lutHeight;
+     texDesc.MipLevels = 1;
+     texDesc.ArraySize = 1;
+     texDesc.Format = DXGI_FORMAT_R16G16_FLOAT;
+     texDesc.SampleDesc.Count = 1;
+     texDesc.Usage = D3D11_USAGE_DEFAULT;
+     texDesc.BindFlags = D3D11_BIND_RENDER_TARGET | D3D11_BIND_SHADER_RESOURCE;
+     ID3D11Texture2D* lutTex = nullptr;
+     HRESULT hr = m_pDevice->CreateTexture2D(&texDesc, nullptr, &lutTex);
+     if (FAILED(hr))
+         return hr;
+     ID3D11RenderTargetView* lutRTV = nullptr;
+     hr = m_pDevice->CreateRenderTargetView(lutTex, nullptr, &lutRTV);
+     if (FAILED(hr))
+     {
+         lutTex->Release();
+         return hr;
+     }
+     ID3D11ShaderResourceView* lutSRV = nullptr;
+     hr = m_pDevice->CreateShaderResourceView(lutTex, nullptr, &lutSRV);
+     if (FAILED(hr))
+     {
+         lutRTV->Release();
+         lutTex->Release();
+         return hr;
+     }
+     float clearColor[4] = { 0, 0, 0, 0 };
+     m_pDeviceContext->OMSetRenderTargets(1, &lutRTV, nullptr);
+     m_pDeviceContext->ClearRenderTargetView(lutRTV, clearColor);
+     D3D11_VIEWPORT vp = {};
+     vp.Width = (FLOAT)lutWidth;
+     vp.Height = (FLOAT)lutHeight;
+     vp.MinDepth = 0.0f;
+     vp.MaxDepth = 1.0f;
+     vp.TopLeftX = 0;
+     vp.TopLeftY = 0;
+     m_pDeviceContext->RSSetViewports(1, &vp);
+     UINT stride = sizeof(FullScreenVertex);
+     UINT offset = 0;
+     m_pDeviceContext->IASetVertexBuffers(0, 1, &m_pFullScreenQuadVB, &stride, &offset);
+     m_pDeviceContext->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLESTRIP);
+     m_pDeviceContext->IASetInputLayout(m_pFullScreenLayout);
+     m_pDeviceContext->VSSetShader(m_pFullScreenVS, nullptr, 0);
+     m_pDeviceContext->PSSetShader(m_pBRDFIntegrationPS, nullptr, 0);
+     m_pDeviceContext->Draw(4, 0);
+     m_pDeviceContext->OMSetRenderTargets(1, &oldRTV, oldDSV);
+     m_pDeviceContext->RSSetViewports(1, &oldViewport);
+     m_pDeviceContext->IASetInputLayout(oldLayout);
+     m_pDeviceContext->VSSetShader(oldVS, nullptr, 0);
+     m_pDeviceContext->PSSetShader(oldPS, nullptr, 0);
+     if (oldLayout) oldLayout->Release();
+     if (oldVS) oldVS->Release();
+     if (oldPS) oldPS->Release();
+     if (oldRTV) oldRTV->Release();
+     if (oldDSV) oldDSV->Release();
+     lutRTV->Release();
+     lutTex->Release();
+     *outBRDFLUTSRV = lutSRV;
+     return S_OK;
+ }
 
  HRESULT RenderClass::PrefilterCubemapSpecular(
      ID3D11ShaderResourceView* environmentCubeSRV,

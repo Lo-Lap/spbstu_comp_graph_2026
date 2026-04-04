@@ -104,7 +104,10 @@ public:
         m_pIrradianceSRV(nullptr),
         m_pIrradianceConvolutionPS(nullptr),
 
-        m_pHdrToCubemapPS(nullptr)
+        m_pHdrToCubemapPS(nullptr),
+
+        m_pBRDFLUTSRV(nullptr),
+        m_pBRDFIntegrationPS(nullptr)
     {
         for (int i = 0; i < kSphereCount; ++i)
         {
@@ -176,6 +179,12 @@ private:
         ID3D11ShaderResourceView* environmentCubeSRV,
         UINT irradianceSize,
         ID3D11ShaderResourceView** outIrradianceSRV
+    );
+
+    HRESULT GenerateBRDFLUT(
+        UINT lutWidth,
+        UINT lutHeight,
+        ID3D11ShaderResourceView** outBRDFLUTSRV
     );
 
     bool HasExtension(const std::wstring& path, const std::wstring& ext) const;
@@ -313,6 +322,8 @@ private:
 
     ID3D11ShaderResourceView* m_pPrefilteredEnvSRV;
     ID3D11PixelShader* m_pSpecularPrefilterPS;
+    ID3D11ShaderResourceView* m_pBRDFLUTSRV;
+    ID3D11PixelShader* m_pBRDFIntegrationPS;
 
     ID3D11Buffer* m_pSpecularPrefilterCB;
 };
