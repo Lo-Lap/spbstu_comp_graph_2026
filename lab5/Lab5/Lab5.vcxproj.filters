@@ -212,6 +212,9 @@
     <CopyFileToFolders Include="BRDFIntegration.ps">
       <Filter>shader</Filter>
     </CopyFileToFolders>
+    <CopyFileToFolders Include="SpecularPrefilter.ps">
+      <Filter>shader</Filter>
+    </CopyFileToFolders>
   </ItemGroup>
   <ItemGroup>
     <None Include="imgui\imgui.vcxproj">
@@ -222,9 +225,6 @@
     </None>
     <None Include="imgui\imgui.vcxproj.user">
       <Filter>imgui</Filter>
-    </None>
-    <None Include="SpecularPrefilter.ps">
-      <Filter>shader</Filter>
     </None>
   </ItemGroup>
 </Project>

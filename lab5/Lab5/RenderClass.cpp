@@ -1810,7 +1810,9 @@ void RenderClass::SetMVPBuffer()
 
     materialParams.DebugView = XMFLOAT4(
         static_cast<float>(m_DebugViewMode),
-        0.0f, 0.0f, 0.0f
+        m_EnableSpecularIBL ? 1.0f : 0.0f,
+        m_DiffuseIBLIntensity,
+        m_SpecularIBLIntensity
     );
 
     m_pDeviceContext->UpdateSubresource(m_pMaterialBuffer, 0, nullptr, &materialParams, 0, 0);
@@ -2192,9 +2194,24 @@ void RenderClass::ShutdownImGui()
 
 void RenderClass::RenderImGui()
 {
+    m_pDeviceContext->OMSetRenderTargets(1, &m_pRenderTargetView, nullptr);
+
+    RECT rc;
+    GetClientRect(FindWindow(m_szWindowClass, m_szTitle), &rc);
+
+    D3D11_VIEWPORT vp = {};
+    vp.Width = float(rc.right - rc.left);
+    vp.Height = float(rc.bottom - rc.top);
+    vp.MinDepth = 0.0f;
+    vp.MaxDepth = 1.0f;
+    vp.TopLeftX = 0.0f;
+    vp.TopLeftY = 0.0f;
+    m_pDeviceContext->RSSetViewports(1, &vp);
+
     ImGui_ImplDX11_NewFrame();
     ImGui_ImplWin32_NewFrame();
     ImGui::NewFrame();
+
     ImGui::Begin("Lights");
     for (int i = 0; i < 3; i++)
     {
@@ -2207,18 +2224,32 @@ void RenderClass::RenderImGui()
         ImGui::Separator();
     }
     ImGui::End();
+    
     ImGui::Begin("Material");
     ImGui::Checkbox("Enable textures", &m_EnableTextures);
-    ImGui::SliderFloat("Metalness", &m_MaterialMetalness, 0.1f, 1.0f);
-    ImGui::SliderFloat("Roughness", &m_MaterialRoughness, 0.1f, 1.0f);
+    ImGui::SliderFloat("Metalness", &m_MaterialMetalness, 0.0f, 1.0f);
+    ImGui::SliderFloat("Roughness", &m_MaterialRoughness, 0.02f, 1.0f);
+    ImGui::SliderFloat("AO", &m_MaterialAO, 0.0f, 1.0f);
+    ImGui::SliderFloat("Normal strength", &m_NormalStrength, 0.0f, 2.0f);
     ImGui::ColorEdit3("Color", &m_MaterialColor.x);
+
+    ImGui::Separator();
+    ImGui::Checkbox("Enable specular IBL", &m_EnableSpecularIBL);
+    ImGui::SliderFloat("Diffuse IBL intensity", &m_DiffuseIBLIntensity, 0.0f, 3.0f);
+    ImGui::SliderFloat("Specular IBL intensity", &m_SpecularIBLIntensity, 0.0f, 3.0f);
+
     static const char* debugModes[] =
     {
-         "Final",
-         "Normal Distribution Function",
-         "Geometry Function",
-         "Fresnel Function"
+        "Final",
+        "Normal Distribution Function",
+        "Geometry Function",
+        "Fresnel Function",
+        "Diffuse IBL",
+        "Specular IBL",
+        "Ambient IBL",
+        "Reflection only"
     };
+
     ImGui::Combo("View mode", &m_DebugViewMode, debugModes, IM_ARRAYSIZE(debugModes));
     ImGui::End();
 

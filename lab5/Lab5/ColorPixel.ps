@@ -120,6 +120,10 @@ float4 main(PS_INPUT input) : SV_Target
     float3 V = normalize(input.CameraPos - input.WorldPos);
     float3 F0 = lerp(float3(0.04f, 0.04f, 0.04f), albedo, metallic);
     int debugMode = (int)(DebugView.x + 0.5f);
+
+    float enableSpecularIBL = step(0.5f, DebugView.y);
+    float diffuseIBLIntensity = max(DebugView.z, 0.0f);
+    float specularIBLIntensity = max(DebugView.w, 0.0f);
     float3 Lo = 0.0f;
 
     [unroll]
@@ -176,15 +180,45 @@ float4 main(PS_INPUT input) : SV_Target
     float3 kD_ambient = (1.0f - kS_ambient) * (1.0f - metallic);
 
     float3 irradiance = irradianceMap.Sample(samplerState, N).rgb;
-    float3 diffuseIBL = irradiance * albedo;
+    float3 diffuseIBL = kD_ambient * irradiance * albedo * diffuseIBLIntensity;
 
     const float MAX_REFLECTION_LOD = 4.0f;
-    float3 prefilteredColor = prefilteredEnvMap.SampleLevel(samplerState, R, roughness * MAX_REFLECTION_LOD).rgb;
-    float2 envBRDF = brdfLUT.Sample(samplerState, float2(NdotV, roughness)).rg;
-    float3 specularIBL = prefilteredColor * (F_ambient * envBRDF.x + envBRDF.y);
+    float3 prefilteredColor = prefilteredEnvMap.SampleLevel(
+        samplerState,
+        R,
+        roughness * MAX_REFLECTION_LOD
+    ).rgb;
 
-    float3 ambient = (kD_ambient * diffuseIBL + specularIBL) * ao;
+    float2 envBRDF = brdfLUT.Sample(
+        samplerState,
+        float2(NdotV, roughness)
+    ).rg;
+
+    float3 specularIBL = prefilteredColor * (F_ambient * envBRDF.x + envBRDF.y);
+    specularIBL *= enableSpecularIBL * specularIBLIntensity;
+
+    float3 ambient = (diffuseIBL + specularIBL) * ao;
+    // debug views for IBL validation
+    if (debugMode == 4) // Diffuse IBL
+    {
+        return float4(diffuseIBL * ao, 1.0f);
+    }
+
+    if (debugMode == 5) // Specular IBL
+    {
+        return float4(specularIBL * ao, 1.0f);
+    }
+
+    if (debugMode == 6) // Ambient IBL
+    {
+        return float4(ambient, 1.0f);
+    }
+
+    if (debugMode == 7) // Reflection only
+    {
+        return float4(prefilteredColor, 1.0f);
+    }
+
     float3 color = ambient + Lo;
     return float4(color, 1.0f);
-
 }

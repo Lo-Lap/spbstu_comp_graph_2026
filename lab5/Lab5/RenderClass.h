@@ -94,7 +94,7 @@ public:
         m_MaterialAO(1.0f),
         m_NormalStrength(1.0f),
         m_MaterialColor(1.0f, 1.0f, 1.0f),
-        m_EnableTextures(true),
+        m_EnableTextures(false),
         m_DebugViewMode(DebugView_Final),
 
         m_pPrefilteredEnvSRV(nullptr),
@@ -300,13 +300,20 @@ private:
     XMFLOAT3 m_MaterialColor;
 
     bool m_EnableTextures;
+    bool m_EnableSpecularIBL = true;
+    float m_DiffuseIBLIntensity = 1.0f;
+    float m_SpecularIBLIntensity = 1.0f;
 
     enum DebugViewMode
     {
         DebugView_Final = 0,
         DebugView_NDF = 1,
         DebugView_Geometry = 2,
-        DebugView_Fresnel = 3
+        DebugView_Fresnel = 3,
+        DebugView_DiffuseIBL = 4,
+        DebugView_SpecularIBL = 5,
+        DebugView_AmbientIBL = 6,
+        DebugView_ReflectionOnly = 7
     };
     int m_DebugViewMode;
 
