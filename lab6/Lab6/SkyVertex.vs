@@ -12,8 +12,6 @@ cbuffer CameraBuffer : register(b1)
 struct VS_INPUT
 {
 	float3 Pos : POSITION;
-	float3 Normal : NORMAL;
-	float2 TexCoord : TEXCOORD0;
 };
 
 struct VS_OUTPUT
@@ -24,19 +22,9 @@ struct VS_OUTPUT
 
 VS_OUTPUT main(VS_INPUT input)
 {
-/*
-	VS_OUTPUT o;
-	float keep = input.Normal.x + input.Normal.y + input.Normal.z + input.TexCoord.x + input.TexCoord;
-	float4 worldPos = mul(float4(input.Pos, 1.0f), Model);
-	o.Pos = mul(worldPos, vp);
-	float3 dir = mul(input.Pos, (float3x3)Model);
-	o.Dir = normalize(dir + keep * 0.0f);
-	return o;*/
-
 	VS_OUTPUT o;
 	float4 worldPos = mul(float4(input.Pos, 1.0f), Model);
 	o.Pos = mul(worldPos, vp);
 	o.Dir = normalize(input.Pos);
 	return o;
-
 }

@@ -20,6 +20,27 @@
 
 #pragma comment(lib, "comctl32.lib")
 
+static XMMATRIX BuildViewProjMatrix(
+    const XMFLOAT3& cameraPos,
+    float lrAngle,
+    float udAngle,
+    float aspect)
+{
+    XMVECTOR direction = XMVectorSet(
+        cosf(udAngle) * sinf(lrAngle),
+        sinf(udAngle),
+        cosf(udAngle) * cosf(lrAngle),
+        0.0f
+    );
+
+    XMVECTOR eyePos = XMVectorSet(cameraPos.x, cameraPos.y, cameraPos.z, 1.0f);
+    XMVECTOR focusPoint = XMVectorAdd(eyePos, direction);
+    XMVECTOR upDir = XMVectorSet(0.0f, 1.0f, 0.0f, 0.0f);
+    XMMATRIX view = XMMatrixLookAtLH(eyePos, focusPoint, upDir);
+    XMMATRIX proj = XMMatrixPerspectiveFovLH(XM_PIDIV4, aspect, 0.1f, 100.0f);
+
+    return view * proj;
+}
 
 struct CubeVertex
 {
@@ -188,7 +209,16 @@ HRESULT RenderClass::Init(HWND hWnd, WCHAR szTitle[], WCHAR szWindowClass[])
 
     if (LoadModelFromFile(L"models/penguin/penguin.gltf"))
     {
+   /* if (LoadModelFromFile(L"models/tamioka/Ch_03_01.gltf"))
+    {*/
         OutputDebugStringA("GLTF loaded successfully\n");
+
+        HRESULT gltfHr = CreateGltfGpuResources();
+        if (FAILED(gltfHr))
+        {
+            OutputDebugStringA("CreateGltfGpuResources failed\n");
+            result = gltfHr;
+        }
     }
     else
     {
@@ -203,6 +233,18 @@ HRESULT RenderClass::Init(HWND hWnd, WCHAR szTitle[], WCHAR szWindowClass[])
         m_GltfScene.Nodes.size());
 
     OutputDebugStringA(buffer);
+
+    char dbg[256];
+    sprintf_s(dbg, "Nodes=%zu, RootNodes=%zu\n",
+        m_GltfScene.Nodes.size(),
+        m_GltfScene.RootNodes.size());
+    OutputDebugStringA(dbg);
+    for (size_t i = 0; i < m_GltfScene.RootNodes.size(); ++i)
+    {
+        sprintf_s(dbg, "Root[%zu] = %d\n", i, m_GltfScene.RootNodes[i]);
+        OutputDebugStringA(dbg);
+    }
+
 
     if (SUCCEEDED(result))
     {
@@ -235,9 +277,9 @@ HRESULT RenderClass::InitBufferShader()
 {
     D3D11_INPUT_ELEMENT_DESC layout[] =
     {
-        { "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, offsetof(CubeVertex, xyz),    D3D11_INPUT_PER_VERTEX_DATA, 0 },
-        { "NORMAL",   0, DXGI_FORMAT_R32G32B32_FLOAT, 0, offsetof(CubeVertex, normal), D3D11_INPUT_PER_VERTEX_DATA, 0 },
-        { "TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT,    0, offsetof(CubeVertex, uv),     D3D11_INPUT_PER_VERTEX_DATA, 0 }
+        { "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, offsetof(GltfVertex, Position), D3D11_INPUT_PER_VERTEX_DATA, 0 },
+        { "NORMAL", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, offsetof(GltfVertex, Normal), D3D11_INPUT_PER_VERTEX_DATA, 0 },
+        { "TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT, 0, offsetof(GltfVertex, TexCoord), D3D11_INPUT_PER_VERTEX_DATA, 0 }
     };
 
     HRESULT result = S_OK;
@@ -267,10 +309,29 @@ HRESULT RenderClass::InitBufferShader()
 
     result = CompileShader(L"ToneMapPixel.ps", nullptr, &m_pToneMapPS);
 
+    ID3DBlob* pSkyVSCode = nullptr;
     if (SUCCEEDED(result))
     {
-        result = CompileShader(L"SkyVertex.vs", &m_pSkyVertexShader, nullptr);
+        result = CompileShader(L"SkyVertex.vs", &m_pSkyVertexShader, nullptr, &pSkyVSCode);
     }
+
+    if (SUCCEEDED(result))
+    {
+        D3D11_INPUT_ELEMENT_DESC skyLayout[] =
+        {
+        { "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D11_INPUT_PER_VERTEX_DATA, 0 }
+        };
+        result = m_pDevice->CreateInputLayout(
+            skyLayout,
+            1,
+            pSkyVSCode->GetBufferPointer(),
+            pSkyVSCode->GetBufferSize(),
+            &m_pSkyLayout
+        );
+    }
+    if (pSkyVSCode)
+        pSkyVSCode->Release();
+
     if (SUCCEEDED(result))
     {
         result = CompileShader(L"SkyPixel.ps", nullptr, &m_pSkyPixelShader);
@@ -507,6 +568,15 @@ HRESULT RenderClass::InitBufferShader()
             return result;
         }
     }
+
+    D3D11_RASTERIZER_DESC gltfRsDesc = {};
+    gltfRsDesc.FillMode = D3D11_FILL_SOLID;
+    gltfRsDesc.CullMode = D3D11_CULL_NONE;
+    gltfRsDesc.FrontCounterClockwise = FALSE;
+    gltfRsDesc.DepthClipEnable = TRUE;
+    result = m_pDevice->CreateRasterizerState(&gltfRsDesc, &m_pGltfRasterState);
+    if (FAILED(result))
+        return result;
 
     ScanCubeMapsFolder();
     std::string currentFilename = "sunset_jhbcentral_4k.hdr";
@@ -833,6 +903,8 @@ void RenderClass::Terminate()
     m_environmentFiles.clear();
     m_environmentFileNames.clear();
 
+    ReleaseGltfGpuResources();
+
     TerminateBufferShader();
 
     if (m_pBRDFLUTSRV)
@@ -1015,6 +1087,12 @@ void RenderClass::TerminateBufferShader()
         m_pLayout = nullptr;
     }
 
+    if (m_pSkyLayout)
+    {
+        m_pSkyLayout->Release();
+        m_pSkyLayout = nullptr;
+    }
+
     if (m_pFullScreenLayout)
     {
         m_pFullScreenLayout->Release();
@@ -1097,6 +1175,12 @@ void RenderClass::TerminateBufferShader()
     {
         m_pSkyRasterState->Release();
         m_pSkyRasterState = nullptr;
+    }
+
+    if (m_pGltfRasterState)
+    {
+        m_pGltfRasterState->Release();
+        m_pGltfRasterState = nullptr;
     }
 
     if (m_pSkyDepthState) 
@@ -1404,7 +1488,7 @@ HRESULT RenderClass::ConvertHDRIToCubemap(
     m_pDeviceContext->IASetVertexBuffers(0, 1, &m_pVertexBuffer, &stride, &offset);
     m_pDeviceContext->IASetIndexBuffer(m_pIndexBuffer, DXGI_FORMAT_R16_UINT, 0);
     m_pDeviceContext->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-    m_pDeviceContext->IASetInputLayout(m_pLayout);
+    m_pDeviceContext->IASetInputLayout(m_pSkyLayout);
 
     m_pDeviceContext->VSSetShader(m_pSkyVertexShader, nullptr, 0);
     m_pDeviceContext->PSSetShader(m_pHdrToCubemapPS, nullptr, 0);
@@ -1627,6 +1711,21 @@ void RenderClass::Render()
         m_pDeviceContext->ClearDepthStencilView(m_pDepthView, D3D11_CLEAR_DEPTH, 1.0f, 0);
     }
 
+    RECT rc;
+    GetClientRect(FindWindow(m_szWindowClass, m_szTitle), &rc);
+    float aspect = static_cast<float>(rc.right - rc.left) / (rc.bottom - rc.top);
+    XMMATRIX viewProj = BuildViewProjMatrix(
+        m_CameraPosition,
+        m_LRAngle,
+        m_UDAngle,
+        aspect
+    );
+
+    UpdateCameraAndLightBuffers(viewProj);
+    RenderSkybox(viewProj);
+    RenderGltfScene(viewProj);
+
+    /*
     UINT stride = sizeof(CubeVertex);
     UINT offset = 0;
 
@@ -1656,6 +1755,7 @@ void RenderClass::Render()
         ScopedEvent evt(m_pAnnotation, L"DrawIndexed");
         m_pDeviceContext->DrawIndexed(m_indexCount, 0, 0);
     }
+    */
 
     if (m_DebugViewMode == DebugView_Final)
     {
@@ -1916,6 +2016,81 @@ void RenderClass::SetMVPBuffer()
         m_pDeviceContext->UpdateSubresource(m_pColorBuffer, 0, nullptr, &lightColorCB, 0, 0);
         m_pDeviceContext->DrawIndexed(m_indexCount, 0, 0);
     }
+}
+
+void RenderClass::UpdateCameraAndLightBuffers(const XMMATRIX& viewProj)
+{
+    CameraBuffer cameraBuffer = {};
+    cameraBuffer.vp = XMMatrixTranspose(viewProj);
+    cameraBuffer.cameraPos = m_CameraPosition;
+    D3D11_MAPPED_SUBRESOURCE mappedResource;
+    HRESULT hr = m_pDeviceContext->Map(m_pVPBuffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &mappedResource);
+    if (SUCCEEDED(hr))
+    {
+        memcpy(mappedResource.pData, &cameraBuffer, sizeof(CameraBuffer));
+        m_pDeviceContext->Unmap(m_pVPBuffer, 0);
+    }
+
+    m_pDeviceContext->VSSetConstantBuffers(1, 1, &m_pVPBuffer);
+
+    PointLight lights[3];
+    const float range = 6.0f;
+    const float baseIntensity = 80.0f;
+    float r = 2.5f;
+    lights[0].Position = XMFLOAT3(0.0f, 0.5f, -r);
+    lights[0].Range = range;
+    lights[0].Color = m_LightColors[0];
+    lights[0].Intensity = m_LightBrightness[0] * baseIntensity;
+    lights[1].Position = XMFLOAT3(-0.43f, -0.25f, -r);
+    lights[1].Range = range;
+    lights[1].Color = m_LightColors[1];
+    lights[1].Intensity = m_LightBrightness[1] * baseIntensity;
+    lights[2].Position = XMFLOAT3(0.43f, -0.25f, -r);
+    lights[2].Range = range;
+    lights[2].Color = m_LightColors[2];
+    lights[2].Intensity = m_LightBrightness[2] * baseIntensity;
+
+    D3D11_MAPPED_SUBRESOURCE mappedLight;
+    hr = m_pDeviceContext->Map(m_pLightBuffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &mappedLight);
+    if (SUCCEEDED(hr))
+    {
+        memcpy(mappedLight.pData, lights, sizeof(lights));
+        m_pDeviceContext->Unmap(m_pLightBuffer, 0);
+    }
+    m_pDeviceContext->PSSetConstantBuffers(2, 1, &m_pLightBuffer);
+}
+
+void RenderClass::RenderSkybox(const XMMATRIX& viewProj)
+{
+    XMMATRIX skyModel =
+        XMMatrixScaling(40.0f, 40.0f, 40.0f) *
+        XMMatrixTranslation(m_CameraPosition.x, m_CameraPosition.y, m_CameraPosition.z);
+
+    XMMATRIX skyModelT = XMMatrixTranspose(skyModel);
+
+    m_pDeviceContext->UpdateSubresource(m_pModelBuffer, 0, nullptr, &skyModelT, 0, 0);
+    m_pDeviceContext->VSSetConstantBuffers(0, 1, &m_pModelBuffer);
+    m_pDeviceContext->VSSetConstantBuffers(1, 1, &m_pVPBuffer);
+    m_pDeviceContext->RSSetState(m_pSkyRasterState);
+    m_pDeviceContext->OMSetDepthStencilState(m_pSkyDepthState, 0);
+
+    UINT stride = sizeof(CubeVertex);
+    UINT offset = 0;
+    m_pDeviceContext->IASetVertexBuffers(0, 1, &m_pVertexBuffer, &stride, &offset);
+
+    m_pDeviceContext->IASetIndexBuffer(m_pIndexBuffer, DXGI_FORMAT_R16_UINT, 0);
+    m_pDeviceContext->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+    m_pDeviceContext->IASetInputLayout(m_pSkyLayout);
+    m_pDeviceContext->VSSetShader(m_pSkyVertexShader, nullptr, 0);
+    m_pDeviceContext->PSSetShader(m_pSkyPixelShader, nullptr, 0);
+    m_pDeviceContext->PSSetShaderResources(0, 1, &m_pEnvironmentSRV);
+    m_pDeviceContext->PSSetSamplers(0, 1, &m_pSamplerState);
+    m_pDeviceContext->DrawIndexed(m_indexCount, 0, 0);
+
+    ID3D11ShaderResourceView* nullSRV = nullptr;
+    m_pDeviceContext->PSSetShaderResources(0, 1, &nullSRV);
+    m_pDeviceContext->RSSetState(nullptr);
+    m_pDeviceContext->OMSetDepthStencilState(nullptr, 0);
 }
 
 HRESULT RenderClass::ConfigureBackBuffer(UINT width, UINT height)
@@ -2404,7 +2579,7 @@ HRESULT RenderClass::ConvolveCubemapToIrradiance(
     m_pDeviceContext->IASetVertexBuffers(0, 1, &m_pVertexBuffer, &stride, &offset);
     m_pDeviceContext->IASetIndexBuffer(m_pIndexBuffer, DXGI_FORMAT_R16_UINT, 0);
     m_pDeviceContext->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-    m_pDeviceContext->IASetInputLayout(m_pLayout);
+    m_pDeviceContext->IASetInputLayout(m_pSkyLayout);
 
     m_pDeviceContext->VSSetShader(m_pSkyVertexShader, nullptr, 0);
     m_pDeviceContext->PSSetShader(m_pIrradianceConvolutionPS, nullptr, 0);
@@ -2676,7 +2851,7 @@ HRESULT RenderClass::ConvolveCubemapToIrradiance(
      m_pDeviceContext->IASetVertexBuffers(0, 1, &m_pVertexBuffer, &stride, &offset);
      m_pDeviceContext->IASetIndexBuffer(m_pIndexBuffer, DXGI_FORMAT_R16_UINT, 0);
      m_pDeviceContext->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-     m_pDeviceContext->IASetInputLayout(m_pLayout);
+     m_pDeviceContext->IASetInputLayout(m_pSkyLayout);
 
      m_pDeviceContext->VSSetShader(m_pSkyVertexShader, nullptr, 0);
      m_pDeviceContext->PSSetShader(m_pSpecularPrefilterPS, nullptr, 0);
@@ -2799,3 +2974,243 @@ bool RenderClass::LoadModelFromFile(const std::wstring& path)
 {
     return LoadGltfScene(path, m_GltfScene);
 }
+
+void RenderClass::ReleaseGltfGpuResources()
+{
+    for (auto& mesh : m_GltfGpuMeshes)
+    {
+        for (auto& prim : mesh.Primitives)
+        {
+            if (prim.VertexBuffer)
+            {
+                prim.VertexBuffer->Release();
+                prim.VertexBuffer = nullptr;
+            }
+            if (prim.IndexBuffer)
+            {
+                prim.IndexBuffer->Release();
+                prim.IndexBuffer = nullptr;
+            }
+        }
+    }
+    m_GltfGpuMeshes.clear();
+    for (auto* srv : m_GltfTextureSRVs)
+    {
+        if (srv)
+            srv->Release();
+    }
+    m_GltfTextureSRVs.clear();
+}
+
+HRESULT RenderClass::CreateTextureSRVFromFile(const std::wstring& path, ID3D11ShaderResourceView** outSRV)
+{
+    if (!outSRV)
+        return E_INVALIDARG;
+    *outSRV = nullptr;
+    int width = 0;
+    int height = 0;
+    int channels = 0;
+    std::string narrow(path.begin(), path.end());
+    unsigned char* pixels = stbi_load(narrow.c_str(), &width, &height, &channels, 4);
+    if (!pixels)
+        return E_FAIL;
+
+    D3D11_TEXTURE2D_DESC desc = {};
+    desc.Width = (UINT)width;
+    desc.Height = (UINT)height;
+    desc.MipLevels = 1;
+    desc.ArraySize = 1;
+    desc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+    desc.SampleDesc.Count = 1;
+    desc.Usage = D3D11_USAGE_DEFAULT;
+    desc.BindFlags = D3D11_BIND_SHADER_RESOURCE;
+
+    D3D11_SUBRESOURCE_DATA initData = {};
+    initData.pSysMem = pixels;
+    initData.SysMemPitch = width * 4;
+    ID3D11Texture2D* texture = nullptr;
+    HRESULT hr = m_pDevice->CreateTexture2D(&desc, &initData, &texture);
+    stbi_image_free(pixels);
+
+    if (FAILED(hr))
+        return hr;
+
+    hr = m_pDevice->CreateShaderResourceView(texture, nullptr, outSRV);
+    texture->Release();
+    return hr;
+}
+
+HRESULT RenderClass::CreateGltfGpuResources()
+{
+    ReleaseGltfGpuResources();
+    HRESULT hr = S_OK;
+    m_GltfGpuMeshes.resize(m_GltfScene.Meshes.size());
+    for (size_t meshIndex = 0; meshIndex < m_GltfScene.Meshes.size(); ++meshIndex)
+    {
+        const GltfMeshData& srcMesh = m_GltfScene.Meshes[meshIndex];
+        GltfGpuMesh& dstMesh = m_GltfGpuMeshes[meshIndex];
+        dstMesh.Primitives.resize(srcMesh.Primitives.size());
+        for (size_t primIndex = 0; primIndex < srcMesh.Primitives.size(); ++primIndex)
+        {
+            const GltfPrimitiveData& srcPrim = srcMesh.Primitives[primIndex];
+            GltfGpuPrimitive& dstPrim = dstMesh.Primitives[primIndex];
+            dstPrim.MaterialIndex = srcPrim.MaterialIndex;
+            dstPrim.IndexCount = (UINT)srcPrim.Indices.size();
+            dstPrim.IndexFormat = DXGI_FORMAT_R32_UINT;
+            if (srcPrim.Vertices.empty() || srcPrim.Indices.empty())
+                continue;
+
+            D3D11_BUFFER_DESC vbDesc = {};
+            vbDesc.Usage = D3D11_USAGE_DEFAULT;
+            vbDesc.ByteWidth = (UINT)(sizeof(GltfVertex) * srcPrim.Vertices.size());
+            vbDesc.BindFlags = D3D11_BIND_VERTEX_BUFFER;
+            D3D11_SUBRESOURCE_DATA vbData = {};
+            vbData.pSysMem = srcPrim.Vertices.data();
+            hr = m_pDevice->CreateBuffer(&vbDesc, &vbData, &dstPrim.VertexBuffer);
+            if (FAILED(hr))
+                return hr;
+
+            D3D11_BUFFER_DESC ibDesc = {};
+            ibDesc.Usage = D3D11_USAGE_DEFAULT;
+            ibDesc.ByteWidth = (UINT)(sizeof(uint32_t) * srcPrim.Indices.size());
+            ibDesc.BindFlags = D3D11_BIND_INDEX_BUFFER;
+            D3D11_SUBRESOURCE_DATA ibData = {};
+            ibData.pSysMem = srcPrim.Indices.data();
+            hr = m_pDevice->CreateBuffer(&ibDesc, &ibData, &dstPrim.IndexBuffer);
+            if (FAILED(hr))
+                return hr;
+        }
+    }
+    m_GltfTextureSRVs.resize(m_GltfScene.Textures.size(), nullptr);
+    for (size_t i = 0; i < m_GltfScene.Textures.size(); ++i)
+    {
+        const auto& tex = m_GltfScene.Textures[i];
+        if (!tex.Uri.empty())
+        {
+            CreateTextureSRVFromFile(tex.Uri, &m_GltfTextureSRVs[i]);
+        }
+    }
+    return S_OK;
+}
+
+void RenderClass::DrawGltfPrimitive(const GltfGpuPrimitive& primitive, const XMMATRIX& world, const XMMATRIX& viewProj)
+{
+    if (!primitive.VertexBuffer || !primitive.IndexBuffer || primitive.IndexCount == 0)
+        return;
+
+    XMMATRIX worldT = XMMatrixTranspose(world);
+    m_pDeviceContext->UpdateSubresource(m_pModelBuffer, 0, nullptr, &worldT, 0, 0);
+    m_pDeviceContext->VSSetConstantBuffers(0, 1, &m_pModelBuffer);
+
+    MaterialParamsCB materialParams = {};
+    materialParams.Surface = XMFLOAT4(
+        m_MaterialMetalness,
+        m_MaterialRoughness,
+        m_MaterialAO,
+        m_NormalStrength
+    );
+    materialParams.Albedo = XMFLOAT4(1, 1, 1, 0);
+    materialParams.DebugView = XMFLOAT4(
+        (float)m_DebugViewMode,
+        m_EnableSpecularIBL ? 1.0f : 0.0f,
+        m_DiffuseIBLIntensity,
+        m_SpecularIBLIntensity
+    );
+
+    ID3D11ShaderResourceView* albedoSRV = nullptr;
+    ID3D11ShaderResourceView* normalSRV = nullptr;
+    if (primitive.MaterialIndex >= 0 &&
+        primitive.MaterialIndex < (int)m_GltfScene.Materials.size())
+    {
+        const GltfMaterial& mat = m_GltfScene.Materials[primitive.MaterialIndex];
+        materialParams.Surface.x = mat.MetallicFactor;
+        materialParams.Surface.y = mat.RoughnessFactor;
+        materialParams.Surface.z = 1.0f;
+        materialParams.Surface.w = 1.0f;
+        materialParams.Albedo = XMFLOAT4(
+            mat.BaseColorFactor.x,
+            mat.BaseColorFactor.y,
+            mat.BaseColorFactor.z,
+            (mat.BaseColorTexture >= 0) ? 1.0f : 0.0f
+        );
+
+        if (mat.BaseColorTexture >= 0 &&
+            mat.BaseColorTexture < (int)m_GltfTextureSRVs.size())
+        {
+            albedoSRV = m_GltfTextureSRVs[mat.BaseColorTexture];
+        }
+
+        if (mat.NormalTexture >= 0 &&
+            mat.NormalTexture < (int)m_GltfTextureSRVs.size())
+        {
+            normalSRV = m_GltfTextureSRVs[mat.NormalTexture];
+        }
+    }
+
+    m_pDeviceContext->UpdateSubresource(m_pMaterialBuffer, 0, nullptr, &materialParams, 0, 0);
+    m_pDeviceContext->PSSetConstantBuffers(3, 1, &m_pMaterialBuffer);
+    
+    UINT stride = sizeof(GltfVertex);
+    UINT offset = 0;
+    
+    m_pDeviceContext->IASetVertexBuffers(0, 1, &primitive.VertexBuffer, &stride, &offset);
+    m_pDeviceContext->IASetIndexBuffer(primitive.IndexBuffer, primitive.IndexFormat, 0);
+    m_pDeviceContext->PSSetShaderResources(0, 1, &albedoSRV);
+    m_pDeviceContext->PSSetShaderResources(1, 1, &normalSRV);
+    m_pDeviceContext->DrawIndexed(primitive.IndexCount, 0, 0);
+}
+
+void RenderClass::RenderGltfNode(int nodeIndex, const XMMATRIX& viewProj)
+{
+    if (nodeIndex < 0 || nodeIndex >= (int)m_GltfScene.Nodes.size())
+        return;
+
+    const GltfNodeData& node = m_GltfScene.Nodes[nodeIndex];
+    XMMATRIX world = XMLoadFloat4x4(&node.WorldMatrix);
+
+    XMMATRIX scaleMatrix = XMMatrixScaling(0.03f, 0.03f, 0.03f);
+    XMMATRIX rotationMatrix = XMMatrixRotationX(XM_PIDIV2) * XMMatrixRotationY(XM_PI);
+    world = scaleMatrix * rotationMatrix * world;
+
+    if (node.MeshIndex >= 0 && node.MeshIndex < (int)m_GltfGpuMeshes.size())
+    {
+        const GltfGpuMesh& mesh = m_GltfGpuMeshes[node.MeshIndex];
+        for (const auto& prim : mesh.Primitives)
+        {
+            DrawGltfPrimitive(prim, world, viewProj);
+        }
+    }
+
+    for (int child : node.Children)
+    {
+        RenderGltfNode(child, viewProj);
+    }
+}
+
+void RenderClass::RenderGltfScene(const XMMATRIX& viewProj)
+{
+    m_pDeviceContext->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+    m_pDeviceContext->IASetInputLayout(m_pLayout);
+    m_pDeviceContext->VSSetShader(m_pVertexShader, nullptr, 0);
+    m_pDeviceContext->PSSetShader(m_pPixelShader, nullptr, 0);
+    m_pDeviceContext->PSSetSamplers(0, 1, &m_pSamplerState);
+    m_pDeviceContext->PSSetShaderResources(2, 1, &m_pIrradianceSRV);
+    m_pDeviceContext->PSSetShaderResources(3, 1, &m_pPrefilteredEnvSRV);
+    m_pDeviceContext->PSSetShaderResources(4, 1, &m_pBRDFLUTSRV);
+    m_pDeviceContext->RSSetState(m_pGltfRasterState);
+
+    for (int rootNode : m_GltfScene.RootNodes)
+    {
+        RenderGltfNode(rootNode, viewProj);
+    }
+
+    m_pDeviceContext->RSSetState(nullptr);
+
+    ID3D11ShaderResourceView* nullSRV = nullptr;
+    m_pDeviceContext->PSSetShaderResources(0, 1, &nullSRV);
+    m_pDeviceContext->PSSetShaderResources(1, 1, &nullSRV);
+    m_pDeviceContext->PSSetShaderResources(2, 1, &nullSRV);
+    m_pDeviceContext->PSSetShaderResources(3, 1, &nullSRV);
+    m_pDeviceContext->PSSetShaderResources(4, 1, &nullSRV);
+}
+

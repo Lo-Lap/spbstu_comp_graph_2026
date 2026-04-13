@@ -32,6 +32,7 @@ public:
         m_pPixelShader(nullptr),
         m_pVertexShader(nullptr),
         m_pLayout(nullptr),
+        m_pSkyLayout(nullptr),
         m_pModelBuffer(nullptr),
         m_pVPBuffer(nullptr),
         m_szTitle(nullptr),
@@ -51,6 +52,7 @@ public:
         m_pSkyPixelShader(nullptr),
         m_pSkyRasterState(nullptr),
         m_pSkyDepthState(nullptr),
+        m_pGltfRasterState(nullptr),
 
         m_CameraPosition(0.0f, 0.0f, -5.0f),
         m_CameraSpeed(0.1f),
@@ -166,6 +168,19 @@ public:
 
 
 private:
+    struct GltfGpuPrimitive
+    {
+        ID3D11Buffer* VertexBuffer = nullptr;
+        ID3D11Buffer* IndexBuffer = nullptr;
+        UINT IndexCount = 0;
+        DXGI_FORMAT IndexFormat = DXGI_FORMAT_R32_UINT;
+        int MaterialIndex = -1;
+    };
+
+    struct GltfGpuMesh
+    {
+        std::vector<GltfGpuPrimitive> Primitives;
+    };
 
     HRESULT LoadEnvironmentMap(const wchar_t* path);
     HRESULT LoadHDRTexture2D(const wchar_t* path, ID3D11ShaderResourceView** outSRV);
@@ -192,10 +207,21 @@ private:
 
     HRESULT ConfigureBackBuffer(UINT width, UINT height);
     void SetMVPBuffer();
+    void RenderSkybox(const XMMATRIX& viewProj);
+
+    void UpdateCameraAndLightBuffers(const XMMATRIX& viewProj);
     HRESULT CreateHDRSceneTexture(UINT width, UINT height);
 
     bool LoadModelFromFile(const std::wstring& path);
 
+    HRESULT CreateGltfGpuResources();
+    void ReleaseGltfGpuResources();
+    HRESULT CreateTextureSRVFromFile(const std::wstring& path, ID3D11ShaderResourceView** outSRV);
+    void RenderGltfScene(const XMMATRIX& viewProj);
+    void RenderGltfNode(int nodeIndex, const XMMATRIX& viewProj);
+    void DrawGltfPrimitive(const GltfGpuPrimitive& primitive, const XMMATRIX& world, const XMMATRIX& viewProj);
+
+private:
     float m_LightBrightness[3] = { 1.0f, 0.9f, 0.9f };
     XMFLOAT3 m_LightColors[3] =
     {
@@ -219,6 +245,7 @@ private:
     ID3D11PixelShader* m_pPixelShader;
     ID3D11VertexShader* m_pVertexShader;
     ID3D11InputLayout* m_pLayout;
+    ID3D11InputLayout* m_pSkyLayout;
 
     static constexpr int kSphereCount = 4;
     ID3D11ShaderResourceView* m_pTextureViews[kSphereCount];
@@ -294,6 +321,8 @@ private:
     ID3D11RasterizerState* m_pSkyRasterState;
     ID3D11DepthStencilState* m_pSkyDepthState;
 
+    ID3D11RasterizerState* m_pGltfRasterState;
+
     float m_MaterialMetalness;
     float m_MaterialRoughness;
     float m_MaterialAO;
@@ -336,5 +365,8 @@ private:
     ID3D11Buffer* m_pSpecularPrefilterCB;
 
     LoadedGltfScene m_GltfScene;
+
+    std::vector<GltfGpuMesh> m_GltfGpuMeshes;
+    std::vector<ID3D11ShaderResourceView*> m_GltfTextureSRVs;
 };
 #endif

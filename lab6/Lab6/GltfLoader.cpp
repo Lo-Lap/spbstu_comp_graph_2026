@@ -22,22 +22,26 @@ static bool ReadFloat3Attribute(
     auto it = primitive.attributes.find(attributeName);
     if (it == primitive.attributes.end())
         return false;
-
     const tinygltf::Accessor& accessor = model.accessors[it->second];
+    if (accessor.bufferView < 0)
+        return false;
     const tinygltf::BufferView& view = model.bufferViews[accessor.bufferView];
     const tinygltf::Buffer& buffer = model.buffers[view.buffer];
-
-    const unsigned char* dataPtr =
+    if (accessor.componentType != TINYGLTF_COMPONENT_TYPE_FLOAT ||
+        accessor.type != TINYGLTF_TYPE_VEC3)
+    {
+        OutputDebugStringA(("Unsupported Float3 attr: " + attributeName + "\n").c_str());
+        return false;
+    }
+    const size_t stride = accessor.ByteStride(view);
+    const unsigned char* base =
         buffer.data.data() + view.byteOffset + accessor.byteOffset;
-
     outData.resize(accessor.count);
-
     for (size_t i = 0; i < accessor.count; ++i)
     {
-        const float* src = reinterpret_cast<const float*>(dataPtr + i * 3 * sizeof(float));
+        const float* src = reinterpret_cast<const float*>(base + i * stride);
         outData[i] = XMFLOAT3(src[0], src[1], src[2]);
     }
-
     return true;
 }
 
@@ -52,22 +56,31 @@ static bool ReadFloat2Attribute(
         return false;
 
     const tinygltf::Accessor& accessor = model.accessors[it->second];
+    if (accessor.bufferView < 0)
+        return false;
+
     const tinygltf::BufferView& view = model.bufferViews[accessor.bufferView];
     const tinygltf::Buffer& buffer = model.buffers[view.buffer];
+    if (accessor.componentType != TINYGLTF_COMPONENT_TYPE_FLOAT ||
+        accessor.type != TINYGLTF_TYPE_VEC2)
+    {
+        OutputDebugStringA(("Unsupported Float2 attr: " + attributeName + "\n").c_str());
+        return false;
+    }
 
-    const unsigned char* dataPtr =
-        buffer.data.data() + view.byteOffset + accessor.byteOffset;
-
+    const size_t stride = accessor.ByteStride(view);
+    const unsigned char* base = buffer.data.data() + view.byteOffset + accessor.byteOffset;
     outData.resize(accessor.count);
 
     for (size_t i = 0; i < accessor.count; ++i)
     {
-        const float* src = reinterpret_cast<const float*>(dataPtr + i * 2 * sizeof(float));
+        const float* src = reinterpret_cast<const float*>(base + i * stride);
         outData[i] = XMFLOAT2(src[0], src[1]);
     }
 
     return true;
 }
+
 
 static bool ReadIndices(
     const tinygltf::Model& model,
@@ -225,6 +238,32 @@ static void LoadTextures(
     }
 }
 
+static void DebugPrintPrimitiveInfo(
+    const tinygltf::Model& model,
+    const tinygltf::Primitive& primitive,
+    const char* meshName)
+{
+    std::ostringstream oss;
+    oss << "[GLTF] mesh=" << (meshName ? meshName : "<unnamed>")
+        << " indices=" << primitive.indices
+        << " material=" << primitive.material
+        << " attrs:";
+    for (const auto& [name, accessorIndex] : primitive.attributes)
+    {
+        const auto& accessor = model.accessors[accessorIndex];
+        const auto& view = model.bufferViews[accessor.bufferView];
+        oss << " " << name
+            << "(count=" << accessor.count
+            << ", type=" << accessor.type
+            << ", comp=" << accessor.componentType
+            << ", stride=" << accessor.ByteStride(view)
+            << ")";
+    }
+    oss << "\n";
+    OutputDebugStringA(oss.str().c_str());
+}
+
+
 static void LoadMeshes(
     const tinygltf::Model& model,
     LoadedGltfScene& outScene)
@@ -239,6 +278,7 @@ static void LoadMeshes(
 
         for (const tinygltf::Primitive& primitive : srcMesh.primitives)
         {
+            DebugPrintPrimitiveInfo(model, primitive, srcMesh.name.c_str());
             GltfPrimitiveData dstPrimitive;
             if (LoadPrimitive(model, primitive, dstPrimitive))
             {
@@ -377,7 +417,10 @@ bool LoadGltfScene(const std::wstring& filePath, LoadedGltfScene& outScene)
     DebugPrint(narrowPath);
     DebugPrint("\n");
 
-    ok = loader.LoadASCIIFromFile(&model, &err, &warn, narrowPath);
+    if (path.extension() == L".glb")
+        ok = loader.LoadBinaryFromFile(&model, &err, &warn, utf8Path);
+    else
+        ok = loader.LoadASCIIFromFile(&model, &err, &warn, utf8Path);
 
     if (!warn.empty())
     {
@@ -405,22 +448,25 @@ bool LoadGltfScene(const std::wstring& filePath, LoadedGltfScene& outScene)
     LoadMaterials(model, outScene);
     LoadMeshes(model, outScene);
     LoadNodes(model, outScene);
-
+    outScene.RootNodes.clear();
     if (model.defaultScene >= 0 && model.defaultScene < (int)model.scenes.size())
     {
         const tinygltf::Scene& scene = model.scenes[model.defaultScene];
-
         for (int rootNode : scene.nodes)
         {
-            ComputeWorldRecursive(outScene, rootNode, XMMatrixIdentity());
-            outScene.SceneRoot = rootNode;
+            outScene.RootNodes.push_back(rootNode);
+            ComputeWorldRecursive(outScene, rootNode, DirectX::XMMatrixIdentity());
         }
     }
     else
     {
-        for (size_t i = 0; i < outScene.Nodes.size(); ++i)
-            ComputeWorldRecursive(outScene, (int)i, XMMatrixIdentity());
+        for (int i = 0; i < (int)model.nodes.size(); ++i)
+        {
+            outScene.RootNodes.push_back(i);
+            ComputeWorldRecursive(outScene, i, DirectX::XMMatrixIdentity());
+        }
     }
+
 
     return true;
 }

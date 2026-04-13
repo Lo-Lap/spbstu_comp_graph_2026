@@ -56,14 +56,23 @@ struct GltfNodeData
     std::vector<int> Children;
 };
 
+//struct LoadedGltfScene
+//{
+//    std::vector<GltfMeshData> Meshes;
+//    std::vector<GltfMaterial> Materials;
+//    std::vector<GltfTextureInfo> Textures;
+//    std::vector<GltfNodeData> Nodes;
+//
+//    int SceneRoot = -1;
+//};
+
 struct LoadedGltfScene
 {
     std::vector<GltfMeshData> Meshes;
     std::vector<GltfMaterial> Materials;
     std::vector<GltfTextureInfo> Textures;
     std::vector<GltfNodeData> Nodes;
-
-    int SceneRoot = -1;
+    std::vector<int> RootNodes;
 };
 
 bool LoadGltfScene(const std::wstring& filePath, LoadedGltfScene& outScene);
