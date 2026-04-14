@@ -34,14 +34,8 @@
     <Filter Include="models\penguin">
       <UniqueIdentifier>{803f4592-0a1e-4482-88aa-f34a36038cbd}</UniqueIdentifier>
     </Filter>
-    <Filter Include="NewFilter1">
-      <UniqueIdentifier>{a63ab950-6e9d-4180-a891-bc31855d7866}</UniqueIdentifier>
-    </Filter>
     <Filter Include="src">
       <UniqueIdentifier>{5d3ecd0d-f2db-41ab-82c0-2ba974c952b3}</UniqueIdentifier>
-    </Filter>
-    <Filter Include="models\tamioka">
-      <UniqueIdentifier>{c7db83a9-387c-4346-a983-da845493585c}</UniqueIdentifier>
     </Filter>
   </ItemGroup>
   <ItemGroup>
@@ -150,27 +144,6 @@
     <CopyFileToFolders Include="cubemaps\shanghai_box.dds">
       <Filter>cubemaps</Filter>
     </CopyFileToFolders>
-    <Image Include="models\penguin\Penguin_Albedo.png">
-      <Filter>models\penguin</Filter>
-    </Image>
-    <Image Include="models\penguin\Penguin_Normal.png">
-      <Filter>models\penguin</Filter>
-    </Image>
-    <Image Include="models\penguin\Penguin_Roughness.png">
-      <Filter>models\penguin</Filter>
-    </Image>
-    <Image Include="models\tamioka\3fdc112edced4578852b61cbfa8a6b83_RGB_T_Chr_033_01_Face_D.png">
-      <Filter>models\tamioka</Filter>
-    </Image>
-    <Image Include="models\tamioka\8e4038c3b67f41a786894ef2a0f402a8_RGB_T_Wpn_01_swk_006_D.png">
-      <Filter>models\tamioka</Filter>
-    </Image>
-    <Image Include="models\tamioka\a9a3b12bbf544d2aa106f2e38d11ee6c_RGB_T_Chr_033_01_Body_D.png">
-      <Filter>models\tamioka</Filter>
-    </Image>
-    <Image Include="models\tamioka\e23420d6eff54c3db3d96e3fc1ddd73b_RGB_T_Chr_033_01_Hair_D.png">
-      <Filter>models\tamioka</Filter>
-    </Image>
   </ItemGroup>
   <ItemGroup>
     <CopyFileToFolders Include="ColorPixel.ps">
@@ -263,6 +236,27 @@
     <CopyFileToFolders Include="SpecularPrefilter.ps">
       <Filter>shader</Filter>
     </CopyFileToFolders>
+    <CopyFileToFolders Include="models\penguin\penguin.bin">
+      <Filter>models\penguin</Filter>
+    </CopyFileToFolders>
+    <CopyFileToFolders Include="models\penguin\penguin.gltf">
+      <Filter>models\penguin</Filter>
+    </CopyFileToFolders>
+    <CopyFileToFolders Include="models\penguin\Penguin_Albedo.png">
+      <Filter>models\penguin</Filter>
+    </CopyFileToFolders>
+    <CopyFileToFolders Include="models\penguin\Penguin_Normal.png">
+      <Filter>models\penguin</Filter>
+    </CopyFileToFolders>
+    <CopyFileToFolders Include="models\penguin\Penguin_Roughness.png">
+      <Filter>models\penguin</Filter>
+    </CopyFileToFolders>
+    <CopyFileToFolders Include="BloomExtract.ps">
+      <Filter>shader</Filter>
+    </CopyFileToFolders>
+    <CopyFileToFolders Include="BloomBlur.ps">
+      <Filter>shader</Filter>
+    </CopyFileToFolders>
   </ItemGroup>
   <ItemGroup>
     <None Include="imgui\imgui.vcxproj">
@@ -273,18 +267,6 @@
     </None>
     <None Include="imgui\imgui.vcxproj.user">
       <Filter>imgui</Filter>
-    </None>
-    <None Include="models\penguin\penguin.bin">
-      <Filter>models\penguin</Filter>
-    </None>
-    <None Include="models\penguin\penguin.gltf">
-      <Filter>models\penguin</Filter>
-    </None>
-    <None Include="models\tamioka\Ch_03_01.bin">
-      <Filter>models\tamioka</Filter>
-    </None>
-    <None Include="models\tamioka\Ch_03_01.gltf">
-      <Filter>models\tamioka</Filter>
     </None>
   </ItemGroup>
 </Project>

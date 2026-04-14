@@ -20,27 +20,6 @@
 
 #pragma comment(lib, "comctl32.lib")
 
-static XMMATRIX BuildViewProjMatrix(
-    const XMFLOAT3& cameraPos,
-    float lrAngle,
-    float udAngle,
-    float aspect)
-{
-    XMVECTOR direction = XMVectorSet(
-        cosf(udAngle) * sinf(lrAngle),
-        sinf(udAngle),
-        cosf(udAngle) * cosf(lrAngle),
-        0.0f
-    );
-
-    XMVECTOR eyePos = XMVectorSet(cameraPos.x, cameraPos.y, cameraPos.z, 1.0f);
-    XMVECTOR focusPoint = XMVectorAdd(eyePos, direction);
-    XMVECTOR upDir = XMVectorSet(0.0f, 1.0f, 0.0f, 0.0f);
-    XMMATRIX view = XMMatrixLookAtLH(eyePos, focusPoint, upDir);
-    XMMATRIX proj = XMMatrixPerspectiveFovLH(XM_PIDIV4, aspect, 0.1f, 100.0f);
-
-    return view * proj;
-}
 
 struct CubeVertex
 {
@@ -88,13 +67,42 @@ struct MaterialParamsCB
 {
     XMFLOAT4 Surface;
     XMFLOAT4 Albedo;
-    XMFLOAT4 DebugView;
+    XMFLOAT4 DebugView; 
+    XMFLOAT4 Emissive; 
+};
+
+struct BloomParamsCB
+{
+    XMFLOAT4 Params0; 
+    XMFLOAT4 Params1; 
 };
 
 struct SpecularPrefilterCB
 {
     XMFLOAT4 Params;
 };
+
+static XMMATRIX BuildViewProjMatrix(
+    const XMFLOAT3& cameraPos,
+    float lrAngle,
+    float udAngle,
+    float aspect)
+{
+    XMVECTOR direction = XMVectorSet(
+        cosf(udAngle) * sinf(lrAngle),
+        sinf(udAngle),
+        cosf(udAngle) * cosf(lrAngle),
+        0.0f
+    );
+
+    XMVECTOR eyePos = XMVectorSet(cameraPos.x, cameraPos.y, cameraPos.z, 1.0f);
+    XMVECTOR focusPoint = XMVectorAdd(eyePos, direction);
+    XMVECTOR upDir = XMVectorSet(0.0f, 1.0f, 0.0f, 0.0f);
+    XMMATRIX view = XMMatrixLookAtLH(eyePos, focusPoint, upDir);
+    XMMATRIX proj = XMMatrixPerspectiveFovLH(XM_PIDIV4, aspect, 0.1f, 100.0f);
+
+    return view * proj;
+}
 
 static std::wstring ToLowerCopy(std::wstring s)
 {
@@ -189,6 +197,11 @@ HRESULT RenderClass::Init(HWND hWnd, WCHAR szTitle[], WCHAR szWindowClass[])
 
         if (SUCCEEDED(result))
         {
+            result = CreateBloomResources(width, height);
+        }
+
+        if (SUCCEEDED(result))
+        {
             result = InitLuminanceResources(width, height);
         }
 
@@ -208,9 +221,9 @@ HRESULT RenderClass::Init(HWND hWnd, WCHAR szTitle[], WCHAR szWindowClass[])
     }
 
     if (LoadModelFromFile(L"models/penguin/penguin.gltf"))
+    //if (LoadModelFromFile(L"models/tamioka/Ch_03_01.gltf"))
+    //if (LoadModelFromFile(L"models/submarine/submarine1.gltf"))
     {
-   /* if (LoadModelFromFile(L"models/tamioka/Ch_03_01.gltf"))
-    {*/
         OutputDebugStringA("GLTF loaded successfully\n");
 
         HRESULT gltfHr = CreateGltfGpuResources();
@@ -264,9 +277,7 @@ HRESULT RenderClass::Init(HWND hWnd, WCHAR szTitle[], WCHAR szWindowClass[])
         pFactory->Release();
 
     if (FAILED(result))
-    {
         Terminate();
-    }
 
     InitImGui(hWnd);
 
@@ -309,6 +320,18 @@ HRESULT RenderClass::InitBufferShader()
 
     result = CompileShader(L"ToneMapPixel.ps", nullptr, &m_pToneMapPS);
 
+    if (SUCCEEDED(result))
+    {
+        result = CompileShader(L"BloomExtract.ps", nullptr, &m_pBloomExtractPS);
+    }
+    if (SUCCEEDED(result))
+    {
+        result = CompileShader(L"BloomBlur.ps", nullptr, &m_pBloomBlurPS);
+    }
+    if (FAILED(result))
+        return result;
+
+
     ID3DBlob* pSkyVSCode = nullptr;
     if (SUCCEEDED(result))
     {
@@ -346,6 +369,15 @@ HRESULT RenderClass::InitBufferShader()
     cbDesc.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
     cbDesc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
     result = m_pDevice->CreateBuffer(&cbDesc, nullptr, &m_pToneMapCB);
+    if (FAILED(result))
+        return result;
+
+    D3D11_BUFFER_DESC bloomCBDesc = {};
+    bloomCBDesc.Usage = D3D11_USAGE_DYNAMIC;
+    bloomCBDesc.ByteWidth = sizeof(BloomParamsCB);
+    bloomCBDesc.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
+    bloomCBDesc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
+    result = m_pDevice->CreateBuffer(&bloomCBDesc, nullptr, &m_pBloomCB);
     if (FAILED(result))
         return result;
 
@@ -1244,7 +1276,25 @@ void RenderClass::TerminateBufferShader()
         m_pBRDFIntegrationPS = nullptr;
     }
 
+    if (m_pBloomExtractPS) 
+    { 
+        m_pBloomExtractPS->Release(); 
+        m_pBloomExtractPS = nullptr; 
+    }
 
+    if (m_pBloomBlurPS) 
+    { 
+        m_pBloomBlurPS->Release(); 
+        m_pBloomBlurPS = nullptr; 
+    }
+
+    if (m_pBloomCB) 
+    { 
+        m_pBloomCB->Release(); 
+        m_pBloomCB = nullptr; 
+    }
+
+    ReleaseBloomResources();
 }
 
 std::wstring Extension(const std::wstring& path)
@@ -1639,7 +1689,6 @@ HRESULT RenderClass::LoadEnvironmentMap(const wchar_t* path)
     return S_OK;
 }
 
-
 void RenderClass::ScanCubeMapsFolder()
 {
     m_environmentFiles.clear();
@@ -1725,37 +1774,8 @@ void RenderClass::Render()
     RenderSkybox(viewProj);
     RenderGltfScene(viewProj);
 
-    /*
-    UINT stride = sizeof(CubeVertex);
-    UINT offset = 0;
-
-    {
-        ScopedEvent evt(m_pAnnotation, L"Bind pipeline");
-        m_pDeviceContext->IASetVertexBuffers(0, 1, &m_pVertexBuffer, &stride, &offset);
-        m_pDeviceContext->IASetIndexBuffer(m_pIndexBuffer, DXGI_FORMAT_R16_UINT, 0);
-
-        m_pDeviceContext->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-        m_pDeviceContext->IASetInputLayout(m_pLayout);
-
-        m_pDeviceContext->VSSetShader(m_pVertexShader, nullptr, 0);
-        m_pDeviceContext->PSSetShader(m_pPixelShader, nullptr, 0);
-    }
-
-    m_pDeviceContext->PSSetShaderResources(2, 1, &m_pIrradianceSRV);
-    m_pDeviceContext->PSSetShaderResources(3, 1, &m_pPrefilteredEnvSRV);
-    m_pDeviceContext->PSSetShaderResources(4, 1, &m_pBRDFLUTSRV);
-
-
-    {
-        ScopedEvent evt(m_pAnnotation, L"Update MVP");
-        SetMVPBuffer();
-    }
-
-    {
-        ScopedEvent evt(m_pAnnotation, L"DrawIndexed");
-        m_pDeviceContext->DrawIndexed(m_indexCount, 0, 0);
-    }
-    */
+    if (m_DebugViewMode == DebugView_Final)
+        ApplyBloom();
 
     if (m_DebugViewMode == DebugView_Final)
     {
@@ -1797,224 +1817,6 @@ void RenderClass::Render()
     {
         ScopedEvent evt(m_pAnnotation, L"Present");
         m_pSwapChain->Present(1, 0);
-    }
-}
-
-void RenderClass::SetMVPBuffer()
-{
-    //m_pDeviceContext->OMSetRenderTargets(1, &m_pRenderTargetView, m_pDepthView); 
-    m_pDeviceContext->OMSetDepthStencilState(nullptr, 0);
-
-    XMMATRIX model = XMMatrixTranslation(m_CubePosition.x, m_CubePosition.y, m_CubePosition.z);
-
-    XMVECTOR direction = XMVectorSet(
-        cosf(m_UDAngle) * sinf(m_LRAngle),
-        sinf(m_UDAngle),
-        cosf(m_UDAngle) * cosf(m_LRAngle),
-        0.0f
-    );
-
-    XMVECTOR eyePos = XMVectorSet(m_CameraPosition.x, m_CameraPosition.y, m_CameraPosition.z, 0.0f);
-    XMVECTOR focusPoint = XMVectorAdd(eyePos, direction);
-    XMVECTOR upDir = XMVectorSet(0.0f, 1.0f, 0.0f, 0.0f);
-    XMMATRIX view = XMMatrixLookAtLH(eyePos, focusPoint, upDir);
-
-    RECT rc;
-    GetClientRect(FindWindow(m_szWindowClass, m_szTitle), &rc);
-    float aspect = static_cast<float>(rc.right - rc.left) / (rc.bottom - rc.top);
-    XMMATRIX proj = XMMatrixPerspectiveFovLH(XM_PIDIV4, aspect, 0.1f, 100.0f);
-
-    XMMATRIX vp = view * proj;
-
-    XMMATRIX mT = XMMatrixTranspose(model);
-    XMMATRIX vpT = XMMatrixTranspose(vp);
-
-    m_pDeviceContext->UpdateSubresource(m_pModelBuffer, 0, nullptr, &mT, 0, 0);
-
-    m_pDeviceContext->VSSetConstantBuffers(0, 1, &m_pModelBuffer);
-    m_pDeviceContext->VSSetConstantBuffers(1, 1, &m_pVPBuffer);
-
-    CameraBuffer cameraBuffer;
-    cameraBuffer.vp = XMMatrixTranspose(vp);
-    cameraBuffer.cameraPos = m_CameraPosition;
-
-    D3D11_MAPPED_SUBRESOURCE mappedResource;
-    HRESULT hr = m_pDeviceContext->Map(m_pVPBuffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &mappedResource);
-    if (SUCCEEDED(hr))
-    {
-        memcpy(mappedResource.pData, &cameraBuffer, sizeof(CameraBuffer));
-        m_pDeviceContext->Unmap(m_pVPBuffer, 0);
-    }
-
-    {
-        XMMATRIX skyModel =
-            XMMatrixScaling(40.0f, 40.0f, 40.0f) *
-            XMMatrixTranslation(m_CameraPosition.x, m_CameraPosition.y, m_CameraPosition.z);
-        XMMATRIX skyModelT = XMMatrixTranspose(skyModel);
-        m_pDeviceContext->UpdateSubresource(m_pModelBuffer, 0, nullptr, &skyModelT, 0, 0);
-        m_pDeviceContext->RSSetState(m_pSkyRasterState);
-        m_pDeviceContext->OMSetDepthStencilState(m_pSkyDepthState, 0);
-        m_pDeviceContext->VSSetShader(m_pSkyVertexShader, nullptr, 0);
-        m_pDeviceContext->PSSetShader(m_pSkyPixelShader, nullptr, 0);
-        m_pDeviceContext->PSSetShaderResources(0, 1, &m_pEnvironmentSRV);
-        m_pDeviceContext->PSSetSamplers(0, 1, &m_pSamplerState);
-        m_pDeviceContext->DrawIndexed(m_indexCount, 0, 0);
-        ID3D11ShaderResourceView* nullSRV = nullptr;
-        m_pDeviceContext->PSSetShaderResources(0, 1, &nullSRV);
-        m_pDeviceContext->RSSetState(nullptr);
-        m_pDeviceContext->OMSetDepthStencilState(nullptr, 0);
-    }
-
-    m_pDeviceContext->UpdateSubresource(m_pModelBuffer, 0, nullptr, &mT, 0, 0);
-
-    static float orbitLight = XM_PI / 2;
-    orbitLight += 0.01f;
-    if (orbitLight > XM_2PI)
-        orbitLight -= XM_2PI;
-
-    PointLight lights[3];
-
-    //const float range = 1.75f;
-    const float range = 6.0f;
-    const float baseIntensity = 80.0f;
-    float r = 2.5f;
-
-    // red (pink)
-    lights[0].Position = XMFLOAT3(0.0f, 0.5f, -r);
-    lights[0].Range = range;
-    lights[0].Color = m_LightColors[0];
-
-    // green (cyan)
-    lights[1].Position = XMFLOAT3(-0.43f, -0.25f, -r);
-    lights[1].Range = range;
-    lights[1].Color = m_LightColors[1];
-
-    // blue (purple)
-    lights[2].Position = XMFLOAT3(0.43f, -0.25f, -r);
-    lights[2].Range = range;
-    lights[2].Color = m_LightColors[2];
-
-    lights[0].Intensity = m_LightBrightness[0] * baseIntensity;
-    lights[1].Intensity = m_LightBrightness[1] * baseIntensity;
-    lights[2].Intensity = m_LightBrightness[2] * baseIntensity;
-
-    D3D11_MAPPED_SUBRESOURCE mappedResourceLight;
-    hr = m_pDeviceContext->Map(m_pLightBuffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &mappedResourceLight);
-    if (SUCCEEDED(hr))
-    {
-        memcpy(mappedResourceLight.pData, lights, sizeof(PointLight) * 3);
-        m_pDeviceContext->Unmap(m_pLightBuffer, 0);
-    }
-    m_pDeviceContext->PSSetConstantBuffers(2, 1, &m_pLightBuffer);
-
-    MaterialParamsCB materialParams = {};
-    // воздушный шарик (хехе)
-    //materialParams.Surface = XMFLOAT4(0.05f, 0.15f, 1.0f, 1.0f);
-    // пластик
-    //materialParams.Surface = XMFLOAT4(1.0f, 0.6f, 1.0f, 1.0f);
-    // металл
-    //materialParams.Surface = XMFLOAT4(1.0f, 0.25f, 1.0f, 1.0f);
-    
-    materialParams.Surface = XMFLOAT4(
-        m_MaterialMetalness,
-        m_MaterialRoughness,
-        m_MaterialAO,
-        m_NormalStrength
-    );
-
-    materialParams.Albedo = XMFLOAT4(
-        m_MaterialColor.x,
-        m_MaterialColor.y,
-        m_MaterialColor.z,
-        m_EnableTextures ? 1.0f : 0.0f
-    );
-
-    materialParams.DebugView = XMFLOAT4(
-        static_cast<float>(m_DebugViewMode),
-        m_EnableSpecularIBL ? 1.0f : 0.0f,
-        m_DiffuseIBLIntensity,
-        m_SpecularIBLIntensity
-    );
-
-    m_pDeviceContext->UpdateSubresource(m_pMaterialBuffer, 0, nullptr, &materialParams, 0, 0);
-    m_pDeviceContext->PSSetConstantBuffers(3, 1, &m_pMaterialBuffer);
-
-    UINT stride = sizeof(CubeVertex);
-    UINT offset = 0;
-
-    m_pDeviceContext->IASetVertexBuffers(0, 1, &m_pVertexBuffer, &stride, &offset);
-    m_pDeviceContext->IASetIndexBuffer(m_pIndexBuffer, DXGI_FORMAT_R16_UINT, 0);
-
-    m_pDeviceContext->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-    m_pDeviceContext->IASetInputLayout(m_pLayout);
-
-    m_pDeviceContext->VSSetShader(m_pVertexShader, nullptr, 0);
-    m_pDeviceContext->PSSetShader(m_pPixelShader, nullptr, 0);
-    m_pDeviceContext->PSSetSamplers(0, 1, &m_pSamplerState);
-
-    const float sphereZ = 0.0f;
-
-    const XMFLOAT3 spherePositions[kSphereCount] =
-    {
-        XMFLOAT3(-1.2f, 1.2f, sphereZ), // 0 - левый верх
-        XMFLOAT3(1.2f, 1.2f, sphereZ), // 1 - правый верх
-        XMFLOAT3(-1.2f, -1.2f, sphereZ), // 2 - левый низ
-        XMFLOAT3(1.2f, -1.2f, sphereZ) // 3 - правый низ
-    };
-
-
-    for (int i = 0; i < kSphereCount; ++i)
-    {
-        XMMATRIX sphereModel = XMMatrixTranslation(
-            spherePositions[i].x,
-            spherePositions[i].y,
-            spherePositions[i].z
-        );
-
-        XMMATRIX sphereModelT = XMMatrixTranspose(sphereModel);
-        m_pDeviceContext->UpdateSubresource(m_pModelBuffer, 0, nullptr, &sphereModelT, 0, 0);
-
-        ID3D11ShaderResourceView* albedoSRV = m_EnableTextures ? m_pTextureViews[i] : nullptr;
-        ID3D11ShaderResourceView* normalSRV = m_EnableTextures ? m_pNormalMapViews[i] : nullptr;
-        
-        m_pDeviceContext->PSSetShaderResources(0, 1, &albedoSRV);
-        m_pDeviceContext->PSSetShaderResources(1, 1, &normalSRV);
-
-        m_pDeviceContext->DrawIndexed(m_indexCount, 0, 0);
-    }
-
-    ID3D11ShaderResourceView* nullSRV = nullptr;
-    m_pDeviceContext->PSSetShaderResources(0, 1, &nullSRV);
-    m_pDeviceContext->PSSetShaderResources(1, 1, &nullSRV);
-    m_pDeviceContext->PSSetShaderResources(2, 1, &nullSRV);
-    m_pDeviceContext->PSSetShaderResources(3, 1, &nullSRV);
-    m_pDeviceContext->PSSetShaderResources(4, 1, &nullSRV);
-
-    m_pDeviceContext->PSSetShader(m_pLightPixelShader, nullptr, 0);
-    m_pDeviceContext->PSSetConstantBuffers(0, 1, &m_pColorBuffer);
-
-    for (int i = 0; i < 3; i++)
-    {
-        XMMATRIX lightModel =
-            XMMatrixScaling(0.1f, 0.1f, 0.1f) *
-            XMMatrixTranslation(lights[i].Position.x, lights[i].Position.y, lights[i].Position.z);
-
-        XMMATRIX lightModelT = XMMatrixTranspose(lightModel);
-        m_pDeviceContext->UpdateSubresource(m_pModelBuffer, 0, nullptr, &lightModelT, 0, 0);
-
-        ColorBuffer lightColorCB;
-
-        XMFLOAT3 c = lights[i].Color;
-        float emissiveScale = 2.0f + m_LightBrightness[i] * 3.0f;
-        lightColorCB.color = XMFLOAT4(
-            c.x * emissiveScale,
-            c.y * emissiveScale,
-            c.z * emissiveScale,
-            1.0f
-        );
-
-        m_pDeviceContext->UpdateSubresource(m_pColorBuffer, 0, nullptr, &lightColorCB, 0, 0);
-        m_pDeviceContext->DrawIndexed(m_indexCount, 0, 0);
     }
 }
 
@@ -2167,162 +1969,7 @@ HRESULT RenderClass::CreateHDRSceneTexture(UINT width, UINT height)
     return hr;
 }
 
-void RenderClass::Resize(HWND hWnd)
-{
-    if (!m_pSwapChain || !m_pDeviceContext)
-        return;
 
-    m_pDeviceContext->OMSetRenderTargets(0, nullptr, nullptr);
-
-    if (m_pRenderTargetView)
-    {
-        m_pRenderTargetView->Release();
-        m_pRenderTargetView = nullptr;
-    }
-
-    if (m_pDepthView)
-    {
-        m_pDepthView->Release();
-        m_pDepthView = nullptr;
-    }
-
-    if (m_pHDRSceneSRV)
-    {
-        m_pHDRSceneSRV->Release();
-        m_pHDRSceneSRV = nullptr;
-    }
-
-    if (m_pHDRSceneRTV)
-    {
-        m_pHDRSceneRTV->Release();
-        m_pHDRSceneRTV = nullptr;
-    }
-
-    if (m_pHDRSceneTexture)
-    {
-        m_pHDRSceneTexture->Release();
-        m_pHDRSceneTexture = nullptr;
-    }
-
-
-    HRESULT hr;
-
-    RECT rc;
-    GetClientRect(hWnd, &rc);
-    UINT width = rc.right - rc.left;
-    UINT height = rc.bottom - rc.top;
-
-    //hr = m_pSwapChain->ResizeBuffers(2, width, height, DXGI_FORMAT_R16G16B16A16_FLOAT, 0);
-    hr = m_pSwapChain->ResizeBuffers(2, width, height, DXGI_FORMAT_R8G8B8A8_UNORM_SRGB, 0);
-    //hr = m_pSwapChain->ResizeBuffers(2, width, height, DXGI_FORMAT_R8G8B8A8_UNORM, 0);
-    if (FAILED(hr))
-    {
-        MessageBox(nullptr, L"ResizeBuffers failed.", L"Error", MB_OK);
-        return;
-    }
-
-    HRESULT resultBack = ConfigureBackBuffer(width, height);
-    if (FAILED(resultBack))
-    {
-        MessageBox(nullptr, L"Configure back buffer failed.", L"Error", MB_OK);
-        return;
-    }
-
-    hr = CreateHDRSceneTexture(width, height);
-    if (FAILED(hr))
-    {
-        OutputDebugString(_T("CreateHDRSceneTexture failed.\n"));
-        return;
-    }
-
-    hr = InitLuminanceResources(width, height);
-    if (FAILED(hr))
-    {
-        OutputDebugString(_T("InitLuminanceResources failed.\n"));
-        return;
-    }
-
-    m_pDeviceContext->OMSetRenderTargets(1, &m_pRenderTargetView, m_pDepthView);
-
-    D3D11_VIEWPORT vp;
-    vp.Width = (FLOAT)width;
-    vp.Height = (FLOAT)height;
-    vp.MinDepth = 0.0f;
-    vp.MaxDepth = 1.0f;
-    vp.TopLeftX = 0;
-    vp.TopLeftY = 0;
-    m_pDeviceContext->RSSetViewports(1, &vp);
-}
-
-void RenderClass::MoveCamera(float dx, float dy, float dz)
-{
-    m_CameraPosition.x += dx * m_CameraSpeed;
-    m_CameraPosition.y += dy * m_CameraSpeed;
-    m_CameraPosition.z += dz * m_CameraSpeed;
-}
-
-void RenderClass::RotateCamera(float lrAngle, float udAngle)
-{
-    m_LRAngle += lrAngle;
-    m_UDAngle += udAngle;
-
-    if (m_LRAngle > XM_2PI) m_LRAngle -= XM_2PI;
-    if (m_LRAngle < -XM_2PI) m_LRAngle += XM_2PI;
-
-    if (m_UDAngle > XM_PIDIV2) m_UDAngle = XM_PIDIV2;
-    if (m_UDAngle < -XM_PIDIV2) m_UDAngle = -XM_PIDIV2;
-}
-
-void RenderClass::MouseRBPressed(bool pressed, int x, int y)
-{
-    m_rbPressed = pressed;
-    if (m_rbPressed)
-    {
-        m_prevMouseX = x;
-        m_prevMouseY = y;
-    }
-}
-
-void RenderClass::MouseMoved(int x, int y, HWND hWnd)
-{
-    if (m_rbPressed)
-    {
-        int dx = x - m_prevMouseX;
-        int dy = y - m_prevMouseY;
-
-        const float sens = 0.0015f;
-        m_LRAngle += dx * sens;
-        m_UDAngle -= dy * sens;
-
-        m_UDAngle = std::min(std::max(m_UDAngle, -XM_PIDIV2 + 0.01f), XM_PIDIV2 - 0.01f);
-
-        m_prevMouseX = x;
-        m_prevMouseY = y;
-    }
-}
-
-void RenderClass::MouseWheel(int delta)
-{
-    float steps = delta * 0.005f;
-    XMVECTOR forward = XMVectorSet(
-        cosf(m_UDAngle) * sinf(m_LRAngle),
-        sinf(m_UDAngle),
-        cosf(m_UDAngle) * cosf(m_LRAngle),
-        0.0f
-    );
-
-    XMVECTOR camPos = XMLoadFloat3(&m_CameraPosition);
-    camPos += forward * steps;
-
-    XMStoreFloat3(&m_CameraPosition, camPos);
-}
-
-void RenderClass::MoveCube(float dx, float dy, float dz)
-{
-    m_CubePosition.x += dx * m_CubeMoveSpeed;
-    m_CubePosition.y += dy * m_CubeMoveSpeed;
-    m_CubePosition.z += dz * m_CubeMoveSpeed;
-}
 
 void RenderClass::SetLightBrightness(int index, float value)
 {
@@ -2358,119 +2005,26 @@ void RenderClass::ApplyToneMapping()
     m_pDeviceContext->VSSetShader(m_pFullScreenVS, nullptr, 0);
     m_pDeviceContext->PSSetShader(m_pToneMapPS, nullptr, 0);
     m_pDeviceContext->PSSetShaderResources(0, 1, &m_pHDRSceneSRV);
+    ID3D11ShaderResourceView* bloomSRV = m_EnableBloom ? m_pBloomSRVA : nullptr;
+    m_pDeviceContext->PSSetShaderResources(1, 1, &bloomSRV);
     m_pDeviceContext->PSSetSamplers(0, 1, &m_pSamplerState);
     D3D11_MAPPED_SUBRESOURCE mapped = {};
     if (SUCCEEDED(m_pDeviceContext->Map(m_pToneMapCB, 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped)))
     {
         ToneMapParamsCB* cb = (ToneMapParamsCB*)mapped.pData;
-        cb->Params = XMFLOAT4(m_AdaptedLuminance, 0, 0, 0);
+        cb->Params = XMFLOAT4(
+            m_AdaptedLuminance,
+            m_BloomIntensity,
+            m_EnableBloom ? 1.0f : 0.0f,
+            0.0f
+        );
         m_pDeviceContext->Unmap(m_pToneMapCB, 0);
     }
     m_pDeviceContext->PSSetConstantBuffers(0, 1, &m_pToneMapCB);
     m_pDeviceContext->Draw(4, 0);
     ID3D11ShaderResourceView* nullSRV = nullptr;
     m_pDeviceContext->PSSetShaderResources(0, 1, &nullSRV);
-}
-
-void RenderClass::InitImGui(HWND hWnd)
-{
-    IMGUI_CHECKVERSION();
-    ImGui::CreateContext();
-    ImGui::StyleColorsDark();
-    ImGui_ImplWin32_Init(hWnd);
-    ImGui_ImplDX11_Init(m_pDevice, m_pDeviceContext);
-}
-
-void RenderClass::ShutdownImGui()
-{
-    ImGui_ImplDX11_Shutdown();
-    ImGui_ImplWin32_Shutdown();
-    ImGui::DestroyContext();
-}
-
-void RenderClass::RenderImGui()
-{
-    m_pDeviceContext->OMSetRenderTargets(1, &m_pRenderTargetView, nullptr);
-
-    RECT rc;
-    GetClientRect(FindWindow(m_szWindowClass, m_szTitle), &rc);
-
-    D3D11_VIEWPORT vp = {};
-    vp.Width = float(rc.right - rc.left);
-    vp.Height = float(rc.bottom - rc.top);
-    vp.MinDepth = 0.0f;
-    vp.MaxDepth = 1.0f;
-    vp.TopLeftX = 0.0f;
-    vp.TopLeftY = 0.0f;
-    m_pDeviceContext->RSSetViewports(1, &vp);
-
-    ImGui_ImplDX11_NewFrame();
-    ImGui_ImplWin32_NewFrame();
-    ImGui::NewFrame();
-
-    ImGui::Begin("Lights");
-    for (int i = 0; i < 3; i++)
-    {
-        char colorLabel[32];
-        char brightLabel[32];
-        sprintf_s(colorLabel, "Light %d color", i);
-        sprintf_s(brightLabel, "Light %d brightness", i);
-        ImGui::ColorEdit3(colorLabel, &m_LightColors[i].x);
-        ImGui::SliderFloat(brightLabel, &m_LightBrightness[i], 0.0f, 3.0f);
-        ImGui::Separator();
-    }
-    ImGui::End();
-    
-    ImGui::Begin("Material");
-    ImGui::Checkbox("Enable textures", &m_EnableTextures);
-    ImGui::SliderFloat("Metalness", &m_MaterialMetalness, 0.0f, 1.0f);
-    ImGui::SliderFloat("Roughness", &m_MaterialRoughness, 0.02f, 1.0f);
-    ImGui::SliderFloat("AO", &m_MaterialAO, 0.0f, 1.0f);
-    ImGui::SliderFloat("Normal strength", &m_NormalStrength, 0.0f, 2.0f);
-    ImGui::ColorEdit3("Color", &m_MaterialColor.x);
-
-    ImGui::Separator();
-    ImGui::Checkbox("Enable specular IBL", &m_EnableSpecularIBL);
-    ImGui::SliderFloat("Diffuse IBL intensity", &m_DiffuseIBLIntensity, 0.0f, 3.0f);
-    ImGui::SliderFloat("Specular IBL intensity", &m_SpecularIBLIntensity, 0.0f, 3.0f);
-
-    static const char* debugModes[] =
-    {
-        "Final",
-        "Normal Distribution Function",
-        "Geometry Function",
-        "Fresnel Function",
-        "Diffuse IBL",
-        "Specular IBL",
-        "Ambient IBL",
-        "Reflection only"
-    };
-
-    ImGui::Combo("View mode", &m_DebugViewMode, debugModes, IM_ARRAYSIZE(debugModes));
-    ImGui::End();
-
-    ImGui::Begin("Environment");
-    if (!m_environmentFileNames.empty())
-    {
-        std::vector<const char*> items;
-        for (const auto& name : m_environmentFileNames)
-            items.push_back(name.c_str());
-
-        if (ImGui::Combo("HDRI map", &m_currentEnvIndex, items.data(), static_cast<int>(items.size())))
-        {
-            if (m_currentEnvIndex >= 0 && 
-                m_currentEnvIndex < static_cast<int>(m_environmentFiles.size()) && 
-                m_currentEnvIndex != m_prevEnvIndex)
-            {
-                LoadEnvironmentMap(m_environmentFiles[m_currentEnvIndex].c_str());
-                m_prevEnvIndex = m_currentEnvIndex;
-            }
-        }
-    }
-    ImGui::End();
-
-    ImGui::Render();
-    ImGui_ImplDX11_RenderDrawData(ImGui::GetDrawData());
+    m_pDeviceContext->PSSetShaderResources(1, 1, &nullSRV);
 }
 
 HRESULT RenderClass::ConvolveCubemapToIrradiance(
@@ -2970,6 +2524,9 @@ HRESULT RenderClass::ConvolveCubemapToIrradiance(
      return S_OK;
 }
 
+
+
+
 bool RenderClass::LoadModelFromFile(const std::wstring& path)
 {
     return LoadGltfScene(path, m_GltfScene);
@@ -3119,9 +2676,12 @@ void RenderClass::DrawGltfPrimitive(const GltfGpuPrimitive& primitive, const XMM
 
     ID3D11ShaderResourceView* albedoSRV = nullptr;
     ID3D11ShaderResourceView* normalSRV = nullptr;
+    ID3D11ShaderResourceView* emissiveSRV = nullptr;
+
     if (primitive.MaterialIndex >= 0 &&
         primitive.MaterialIndex < (int)m_GltfScene.Materials.size())
     {
+        materialParams.Emissive = XMFLOAT4(0, 0, 0, 0);
         const GltfMaterial& mat = m_GltfScene.Materials[primitive.MaterialIndex];
         materialParams.Surface.x = mat.MetallicFactor;
         materialParams.Surface.y = mat.RoughnessFactor;
@@ -3133,18 +2693,21 @@ void RenderClass::DrawGltfPrimitive(const GltfGpuPrimitive& primitive, const XMM
             mat.BaseColorFactor.z,
             (mat.BaseColorTexture >= 0) ? 1.0f : 0.0f
         );
+        materialParams.Emissive = XMFLOAT4(
+            mat.EmissiveFactor.x,
+            mat.EmissiveFactor.y,
+            mat.EmissiveFactor.z,
+            (mat.EmissiveTexture >= 0) ? 1.0f : 0.0f
+        );
 
-        if (mat.BaseColorTexture >= 0 &&
-            mat.BaseColorTexture < (int)m_GltfTextureSRVs.size())
-        {
+        if (mat.BaseColorTexture >= 0 && mat.BaseColorTexture < (int)m_GltfTextureSRVs.size())
             albedoSRV = m_GltfTextureSRVs[mat.BaseColorTexture];
-        }
-
-        if (mat.NormalTexture >= 0 &&
-            mat.NormalTexture < (int)m_GltfTextureSRVs.size())
-        {
+        
+        if (mat.NormalTexture >= 0 && mat.NormalTexture < (int)m_GltfTextureSRVs.size())
             normalSRV = m_GltfTextureSRVs[mat.NormalTexture];
-        }
+        
+        if (mat.EmissiveTexture >= 0 && mat.EmissiveTexture < (int)m_GltfTextureSRVs.size())
+            emissiveSRV = m_GltfTextureSRVs[mat.EmissiveTexture];
     }
 
     m_pDeviceContext->UpdateSubresource(m_pMaterialBuffer, 0, nullptr, &materialParams, 0, 0);
@@ -3157,6 +2720,7 @@ void RenderClass::DrawGltfPrimitive(const GltfGpuPrimitive& primitive, const XMM
     m_pDeviceContext->IASetIndexBuffer(primitive.IndexBuffer, primitive.IndexFormat, 0);
     m_pDeviceContext->PSSetShaderResources(0, 1, &albedoSRV);
     m_pDeviceContext->PSSetShaderResources(1, 1, &normalSRV);
+    m_pDeviceContext->PSSetShaderResources(5, 1, &emissiveSRV);
     m_pDeviceContext->DrawIndexed(primitive.IndexCount, 0, 0);
 }
 
@@ -3168,6 +2732,7 @@ void RenderClass::RenderGltfNode(int nodeIndex, const XMMATRIX& viewProj)
     const GltfNodeData& node = m_GltfScene.Nodes[nodeIndex];
     XMMATRIX world = XMLoadFloat4x4(&node.WorldMatrix);
 
+    //XMMATRIX scaleMatrix = XMMatrixScaling(0.3f, 0.3f, 0.3f);
     XMMATRIX scaleMatrix = XMMatrixScaling(0.03f, 0.03f, 0.03f);
     XMMATRIX rotationMatrix = XMMatrixRotationX(XM_PIDIV2) * XMMatrixRotationY(XM_PI);
     world = scaleMatrix * rotationMatrix * world;
@@ -3176,15 +2741,11 @@ void RenderClass::RenderGltfNode(int nodeIndex, const XMMATRIX& viewProj)
     {
         const GltfGpuMesh& mesh = m_GltfGpuMeshes[node.MeshIndex];
         for (const auto& prim : mesh.Primitives)
-        {
             DrawGltfPrimitive(prim, world, viewProj);
-        }
     }
 
     for (int child : node.Children)
-    {
         RenderGltfNode(child, viewProj);
-    }
 }
 
 void RenderClass::RenderGltfScene(const XMMATRIX& viewProj)
@@ -3212,5 +2773,452 @@ void RenderClass::RenderGltfScene(const XMMATRIX& viewProj)
     m_pDeviceContext->PSSetShaderResources(2, 1, &nullSRV);
     m_pDeviceContext->PSSetShaderResources(3, 1, &nullSRV);
     m_pDeviceContext->PSSetShaderResources(4, 1, &nullSRV);
+    m_pDeviceContext->PSSetShaderResources(5, 1, &nullSRV);
 }
 
+
+
+HRESULT RenderClass::CreateBloomResources(UINT width, UINT height)
+{
+    ReleaseBloomResources();
+    width = std::max(1u, width / 2);
+    height = std::max(1u, height / 2);
+    D3D11_TEXTURE2D_DESC texDesc = {};
+    texDesc.Width = width;
+    texDesc.Height = height;
+    texDesc.MipLevels = 1;
+    texDesc.ArraySize = 1;
+    texDesc.Format = DXGI_FORMAT_R16G16B16A16_FLOAT;
+    texDesc.SampleDesc.Count = 1;
+    texDesc.Usage = D3D11_USAGE_DEFAULT;
+    texDesc.BindFlags = D3D11_BIND_RENDER_TARGET | D3D11_BIND_SHADER_RESOURCE;
+    
+    HRESULT result = m_pDevice->CreateTexture2D(&texDesc, nullptr, &m_pBloomTextureA);
+    if (FAILED(result)) 
+        return result;
+
+    result = m_pDevice->CreateRenderTargetView(m_pBloomTextureA, nullptr, &m_pBloomRTVA);
+    if (FAILED(result)) 
+        return result;
+
+    result = m_pDevice->CreateShaderResourceView(m_pBloomTextureA, nullptr, &m_pBloomSRVA);
+    if (FAILED(result)) 
+        return result;
+
+    result = m_pDevice->CreateTexture2D(&texDesc, nullptr, &m_pBloomTextureB);
+    if (FAILED(result)) 
+        return result;
+
+    result = m_pDevice->CreateRenderTargetView(m_pBloomTextureB, nullptr, &m_pBloomRTVB);
+    if (FAILED(result)) 
+        return result;
+
+    result = m_pDevice->CreateShaderResourceView(m_pBloomTextureB, nullptr, &m_pBloomSRVB);
+    if (FAILED(result)) 
+        return result;
+
+    return S_OK;
+}
+
+void RenderClass::ReleaseBloomResources()
+{
+    if (m_pBloomSRVA) 
+    { 
+        m_pBloomSRVA->Release(); 
+        m_pBloomSRVA = nullptr; 
+    }
+
+    if (m_pBloomRTVA) 
+    { 
+        m_pBloomRTVA->Release(); 
+        m_pBloomRTVA = nullptr; 
+    }
+    if (m_pBloomTextureA) 
+    { 
+        m_pBloomTextureA->Release(); 
+        m_pBloomTextureA = nullptr; 
+    }
+
+    if (m_pBloomSRVB) 
+    { 
+        m_pBloomSRVB->Release(); 
+        m_pBloomSRVB = nullptr; 
+    }
+
+    if (m_pBloomRTVB) 
+    { 
+        m_pBloomRTVB->Release(); 
+        m_pBloomRTVB = nullptr; 
+    }
+
+    if (m_pBloomTextureB) 
+    { 
+        m_pBloomTextureB->Release(); 
+        m_pBloomTextureB = nullptr; 
+    }
+}
+
+void RenderClass::ApplyBloom()
+{
+    if (!m_EnableBloom || !m_pHDRSceneSRV || !m_pBloomRTVA || !m_pBloomRTVB)
+        return;
+    RECT rc;
+    GetClientRect(FindWindow(m_szWindowClass, m_szTitle), &rc);
+    float bloomWidth = std::max(1.0f, (float)(rc.right - rc.left) / 2);
+    float bloomHeight = std::max(1.0f, (float)(rc.bottom - rc.top) / 2);
+    D3D11_VIEWPORT vp = {};
+    vp.TopLeftX = 0.0f;
+    vp.TopLeftY = 0.0f;
+    vp.Width = bloomWidth;
+    vp.Height = bloomHeight;
+    vp.MinDepth = 0.0f;
+    vp.MaxDepth = 1.0f;
+    m_pDeviceContext->RSSetViewports(1, &vp);
+    UINT stride = sizeof(FullScreenVertex);
+    UINT offset = 0;
+    m_pDeviceContext->IASetInputLayout(m_pFullScreenLayout);
+    m_pDeviceContext->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLESTRIP);
+    m_pDeviceContext->IASetVertexBuffers(0, 1, &m_pFullScreenQuadVB, &stride, &offset);
+    m_pDeviceContext->VSSetShader(m_pFullScreenVS, nullptr, 0);
+    m_pDeviceContext->PSSetSamplers(0, 1, &m_pSamplerState);
+    D3D11_MAPPED_SUBRESOURCE mapped = {};
+    if (SUCCEEDED(m_pDeviceContext->Map(m_pBloomCB, 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped)))
+    {
+        BloomParamsCB* cb = (BloomParamsCB*)mapped.pData;
+        cb->Params0 = XMFLOAT4(
+            m_BloomThreshold,
+            m_BloomIntensity,
+            (1.0f / bloomWidth) * m_BloomBlurScale,
+            (1.0f / bloomHeight) * m_BloomBlurScale
+        );
+        cb->Params1 = XMFLOAT4(1, 0, 1, 0);
+        m_pDeviceContext->Unmap(m_pBloomCB, 0);
+    }
+    m_pDeviceContext->PSSetConstantBuffers(0, 1, &m_pBloomCB);
+    float clear[4] = { 0,0,0,0 };
+
+    m_pDeviceContext->OMSetRenderTargets(1, &m_pBloomRTVA, nullptr);
+    m_pDeviceContext->ClearRenderTargetView(m_pBloomRTVA, clear);
+    m_pDeviceContext->PSSetShader(m_pBloomExtractPS, nullptr, 0);
+    m_pDeviceContext->PSSetShaderResources(0, 1, &m_pHDRSceneSRV);
+    m_pDeviceContext->Draw(4, 0);
+    ID3D11ShaderResourceView* nullSRV = nullptr;
+    m_pDeviceContext->PSSetShaderResources(0, 1, &nullSRV);
+
+    if (SUCCEEDED(m_pDeviceContext->Map(m_pBloomCB, 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped)))
+    {
+        BloomParamsCB* cb = (BloomParamsCB*)mapped.pData;
+        cb->Params0 = XMFLOAT4(
+            m_BloomThreshold,
+            m_BloomIntensity,
+            (1.0f / bloomWidth) * m_BloomBlurScale,
+            (1.0f / bloomHeight) * m_BloomBlurScale
+        );
+        cb->Params1 = XMFLOAT4(1, 0, 1, 0);
+        m_pDeviceContext->Unmap(m_pBloomCB, 0);
+    }
+    m_pDeviceContext->OMSetRenderTargets(1, &m_pBloomRTVB, nullptr);
+    m_pDeviceContext->ClearRenderTargetView(m_pBloomRTVB, clear);
+    m_pDeviceContext->PSSetShader(m_pBloomBlurPS, nullptr, 0);
+    m_pDeviceContext->PSSetShaderResources(0, 1, &m_pBloomSRVA);
+    m_pDeviceContext->Draw(4, 0);
+    m_pDeviceContext->PSSetShaderResources(0, 1, &nullSRV);
+
+    if (SUCCEEDED(m_pDeviceContext->Map(m_pBloomCB, 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped)))
+    {
+        BloomParamsCB* cb = (BloomParamsCB*)mapped.pData;
+        cb->Params0 = XMFLOAT4(
+            m_BloomThreshold,
+            m_BloomIntensity,
+            (1.0f / bloomWidth) * m_BloomBlurScale,
+            (1.0f / bloomHeight) * m_BloomBlurScale
+        );
+        cb->Params1 = XMFLOAT4(0, 1, 1, 0);
+        m_pDeviceContext->Unmap(m_pBloomCB, 0);
+    }
+    m_pDeviceContext->OMSetRenderTargets(1, &m_pBloomRTVA, nullptr);
+    m_pDeviceContext->ClearRenderTargetView(m_pBloomRTVA, clear);
+    m_pDeviceContext->PSSetShader(m_pBloomBlurPS, nullptr, 0);
+    m_pDeviceContext->PSSetShaderResources(0, 1, &m_pBloomSRVB);
+    m_pDeviceContext->Draw(4, 0);
+    m_pDeviceContext->PSSetShaderResources(0, 1, &nullSRV);
+}
+
+
+
+void RenderClass::Resize(HWND hWnd)
+{
+    if (!m_pSwapChain || !m_pDeviceContext)
+        return;
+
+    m_pDeviceContext->OMSetRenderTargets(0, nullptr, nullptr);
+
+    if (m_pRenderTargetView)
+    {
+        m_pRenderTargetView->Release();
+        m_pRenderTargetView = nullptr;
+    }
+
+    if (m_pDepthView)
+    {
+        m_pDepthView->Release();
+        m_pDepthView = nullptr;
+    }
+
+    if (m_pHDRSceneSRV)
+    {
+        m_pHDRSceneSRV->Release();
+        m_pHDRSceneSRV = nullptr;
+    }
+
+    if (m_pHDRSceneRTV)
+    {
+        m_pHDRSceneRTV->Release();
+        m_pHDRSceneRTV = nullptr;
+    }
+
+    if (m_pHDRSceneTexture)
+    {
+        m_pHDRSceneTexture->Release();
+        m_pHDRSceneTexture = nullptr;
+    }
+
+    ReleaseBloomResources();
+
+
+    HRESULT hr;
+
+    RECT rc;
+    GetClientRect(hWnd, &rc);
+    UINT width = rc.right - rc.left;
+    UINT height = rc.bottom - rc.top;
+
+    //hr = m_pSwapChain->ResizeBuffers(2, width, height, DXGI_FORMAT_R16G16B16A16_FLOAT, 0);
+    hr = m_pSwapChain->ResizeBuffers(2, width, height, DXGI_FORMAT_R8G8B8A8_UNORM_SRGB, 0);
+    //hr = m_pSwapChain->ResizeBuffers(2, width, height, DXGI_FORMAT_R8G8B8A8_UNORM, 0);
+    if (FAILED(hr))
+    {
+        MessageBox(nullptr, L"ResizeBuffers failed.", L"Error", MB_OK);
+        return;
+    }
+
+    HRESULT resultBack = ConfigureBackBuffer(width, height);
+    if (FAILED(resultBack))
+    {
+        MessageBox(nullptr, L"Configure back buffer failed.", L"Error", MB_OK);
+        return;
+    }
+
+    hr = CreateHDRSceneTexture(width, height);
+    if (FAILED(hr))
+    {
+        OutputDebugString(_T("CreateHDRSceneTexture failed.\n"));
+        return;
+    }
+
+    hr = CreateBloomResources(width, height);
+    if (FAILED(hr))
+    {
+        OutputDebugString(_T("CreateBloomResources failed.\n"));
+        return;
+    }
+
+    hr = InitLuminanceResources(width, height);
+    if (FAILED(hr))
+    {
+        OutputDebugString(_T("InitLuminanceResources failed.\n"));
+        return;
+    }
+
+    m_pDeviceContext->OMSetRenderTargets(1, &m_pRenderTargetView, m_pDepthView);
+
+    D3D11_VIEWPORT vp;
+    vp.Width = (FLOAT)width;
+    vp.Height = (FLOAT)height;
+    vp.MinDepth = 0.0f;
+    vp.MaxDepth = 1.0f;
+    vp.TopLeftX = 0;
+    vp.TopLeftY = 0;
+    m_pDeviceContext->RSSetViewports(1, &vp);
+}
+
+void RenderClass::MoveCamera(float dx, float dy, float dz)
+{
+    m_CameraPosition.x += dx * m_CameraSpeed;
+    m_CameraPosition.y += dy * m_CameraSpeed;
+    m_CameraPosition.z += dz * m_CameraSpeed;
+}
+
+void RenderClass::RotateCamera(float lrAngle, float udAngle)
+{
+    m_LRAngle += lrAngle;
+    m_UDAngle += udAngle;
+
+    if (m_LRAngle > XM_2PI) m_LRAngle -= XM_2PI;
+    if (m_LRAngle < -XM_2PI) m_LRAngle += XM_2PI;
+
+    if (m_UDAngle > XM_PIDIV2) m_UDAngle = XM_PIDIV2;
+    if (m_UDAngle < -XM_PIDIV2) m_UDAngle = -XM_PIDIV2;
+}
+
+void RenderClass::MouseRBPressed(bool pressed, int x, int y)
+{
+    m_rbPressed = pressed;
+    if (m_rbPressed)
+    {
+        m_prevMouseX = x;
+        m_prevMouseY = y;
+    }
+}
+
+void RenderClass::MouseMoved(int x, int y, HWND hWnd)
+{
+    if (m_rbPressed)
+    {
+        int dx = x - m_prevMouseX;
+        int dy = y - m_prevMouseY;
+
+        const float sens = 0.0015f;
+        m_LRAngle += dx * sens;
+        m_UDAngle -= dy * sens;
+
+        m_UDAngle = std::min(std::max(m_UDAngle, -XM_PIDIV2 + 0.01f), XM_PIDIV2 - 0.01f);
+
+        m_prevMouseX = x;
+        m_prevMouseY = y;
+    }
+}
+
+void RenderClass::MouseWheel(int delta)
+{
+    float steps = delta * 0.005f;
+    XMVECTOR forward = XMVectorSet(
+        cosf(m_UDAngle) * sinf(m_LRAngle),
+        sinf(m_UDAngle),
+        cosf(m_UDAngle) * cosf(m_LRAngle),
+        0.0f
+    );
+
+    XMVECTOR camPos = XMLoadFloat3(&m_CameraPosition);
+    camPos += forward * steps;
+
+    XMStoreFloat3(&m_CameraPosition, camPos);
+}
+
+void RenderClass::MoveCube(float dx, float dy, float dz)
+{
+    m_CubePosition.x += dx * m_CubeMoveSpeed;
+    m_CubePosition.y += dy * m_CubeMoveSpeed;
+    m_CubePosition.z += dz * m_CubeMoveSpeed;
+}
+
+
+
+void RenderClass::InitImGui(HWND hWnd)
+{
+    IMGUI_CHECKVERSION();
+    ImGui::CreateContext();
+    ImGui::StyleColorsDark();
+    ImGui_ImplWin32_Init(hWnd);
+    ImGui_ImplDX11_Init(m_pDevice, m_pDeviceContext);
+}
+
+void RenderClass::ShutdownImGui()
+{
+    ImGui_ImplDX11_Shutdown();
+    ImGui_ImplWin32_Shutdown();
+    ImGui::DestroyContext();
+}
+
+void RenderClass::RenderImGui()
+{
+    m_pDeviceContext->OMSetRenderTargets(1, &m_pRenderTargetView, nullptr);
+
+    RECT rc;
+    GetClientRect(FindWindow(m_szWindowClass, m_szTitle), &rc);
+
+    D3D11_VIEWPORT vp = {};
+    vp.Width = float(rc.right - rc.left);
+    vp.Height = float(rc.bottom - rc.top);
+    vp.MinDepth = 0.0f;
+    vp.MaxDepth = 1.0f;
+    vp.TopLeftX = 0.0f;
+    vp.TopLeftY = 0.0f;
+    m_pDeviceContext->RSSetViewports(1, &vp);
+
+    ImGui_ImplDX11_NewFrame();
+    ImGui_ImplWin32_NewFrame();
+    ImGui::NewFrame();
+
+    ImGui::Begin("Lights");
+    for (int i = 0; i < 3; i++)
+    {
+        char colorLabel[32];
+        char brightLabel[32];
+        sprintf_s(colorLabel, "Light %d color", i);
+        sprintf_s(brightLabel, "Light %d brightness", i);
+        ImGui::ColorEdit3(colorLabel, &m_LightColors[i].x);
+        ImGui::SliderFloat(brightLabel, &m_LightBrightness[i], 0.0f, 3.0f);
+        ImGui::Separator();
+    }
+    ImGui::End();
+
+    ImGui::Begin("Material");
+    //ImGui::Checkbox("Enable textures", &m_EnableTextures);
+    //ImGui::SliderFloat("Metalness", &m_MaterialMetalness, 0.0f, 1.0f);
+    //ImGui::SliderFloat("Roughness", &m_MaterialRoughness, 0.02f, 1.0f);
+    //ImGui::SliderFloat("AO", &m_MaterialAO, 0.0f, 1.0f);
+    //ImGui::SliderFloat("Normal strength", &m_NormalStrength, 0.0f, 2.0f);
+    //ImGui::ColorEdit3("Color", &m_MaterialColor.x);
+
+    //ImGui::Separator();
+    ImGui::Checkbox("Enable specular IBL", &m_EnableSpecularIBL);
+    ImGui::SliderFloat("Diffuse IBL intensity", &m_DiffuseIBLIntensity, 0.0f, 3.0f);
+    ImGui::SliderFloat("Specular IBL intensity", &m_SpecularIBLIntensity, 0.0f, 3.0f);
+
+    static const char* debugModes[] =
+    {
+        "Final",
+        "Normal Distribution Function",
+        "Geometry Function",
+        "Fresnel Function",
+        "Diffuse IBL",
+        "Specular IBL",
+        "Ambient IBL",
+        "Reflection only"
+    };
+
+    ImGui::Combo("View mode", &m_DebugViewMode, debugModes, IM_ARRAYSIZE(debugModes));
+    ImGui::End();
+
+    ImGui::Begin("Environment");
+    if (!m_environmentFileNames.empty())
+    {
+        std::vector<const char*> items;
+        for (const auto& name : m_environmentFileNames)
+            items.push_back(name.c_str());
+
+        if (ImGui::Combo("HDRI map", &m_currentEnvIndex, items.data(), static_cast<int>(items.size())))
+        {
+            if (m_currentEnvIndex >= 0 &&
+                m_currentEnvIndex < static_cast<int>(m_environmentFiles.size()) &&
+                m_currentEnvIndex != m_prevEnvIndex)
+            {
+                LoadEnvironmentMap(m_environmentFiles[m_currentEnvIndex].c_str());
+                m_prevEnvIndex = m_currentEnvIndex;
+            }
+        }
+    }
+    ImGui::End();
+
+    ImGui::Begin("Bloom");
+    ImGui::Checkbox("Enable bloom", &m_EnableBloom);
+    ImGui::SliderFloat("Threshold", &m_BloomThreshold, 0.1f, 10.0f);
+    ImGui::SliderFloat("Intensity", &m_BloomIntensity, 0.0f, 3.0f);
+    ImGui::SliderFloat("Blur scale", &m_BloomBlurScale, 0.5f, 3.0f);
+    ImGui::End();
+
+
+    ImGui::Render();
+    ImGui_ImplDX11_RenderDrawData(ImGui::GetDrawData());
+}

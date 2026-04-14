@@ -109,7 +109,22 @@ public:
         m_pHdrToCubemapPS(nullptr),
 
         m_pBRDFLUTSRV(nullptr),
-        m_pBRDFIntegrationPS(nullptr)
+        m_pBRDFIntegrationPS(nullptr),
+
+        m_pBloomTextureA(nullptr),
+        m_pBloomRTVA(nullptr),
+        m_pBloomSRVA(nullptr),
+        m_pBloomTextureB(nullptr),
+        m_pBloomRTVB(nullptr),
+        m_pBloomSRVB(nullptr),
+        m_pBloomExtractPS(nullptr),
+        m_pBloomBlurPS(nullptr),
+        m_pBloomCB(nullptr),
+        m_EnableBloom(true),
+        m_BloomThreshold(1.25f),
+        m_BloomIntensity(1.0f),
+        m_BloomBlurScale(1.0f)
+
     {
         for (int i = 0; i < kSphereCount; ++i)
         {
@@ -220,6 +235,11 @@ private:
     void RenderGltfScene(const XMMATRIX& viewProj);
     void RenderGltfNode(int nodeIndex, const XMMATRIX& viewProj);
     void DrawGltfPrimitive(const GltfGpuPrimitive& primitive, const XMMATRIX& world, const XMMATRIX& viewProj);
+
+    HRESULT CreateBloomResources(UINT width, UINT height);
+    void ReleaseBloomResources();
+    void ApplyBloom();
+
 
 private:
     float m_LightBrightness[3] = { 1.0f, 0.9f, 0.9f };
@@ -368,5 +388,20 @@ private:
 
     std::vector<GltfGpuMesh> m_GltfGpuMeshes;
     std::vector<ID3D11ShaderResourceView*> m_GltfTextureSRVs;
+
+    ID3D11Texture2D* m_pBloomTextureA;
+    ID3D11RenderTargetView* m_pBloomRTVA;
+    ID3D11ShaderResourceView* m_pBloomSRVA;
+    ID3D11Texture2D* m_pBloomTextureB;
+    ID3D11RenderTargetView* m_pBloomRTVB;
+    ID3D11ShaderResourceView* m_pBloomSRVB;
+    ID3D11PixelShader* m_pBloomExtractPS;
+    ID3D11PixelShader* m_pBloomBlurPS;
+    ID3D11Buffer* m_pBloomCB;
+    bool m_EnableBloom;
+    float m_BloomThreshold;
+    float m_BloomIntensity;
+    float m_BloomBlurScale;
+
 };
 #endif
