@@ -1,0 +1,25 @@
+Texture2D hdrEquirect : register(t0);
+SamplerState samplerState : register(s0);
+struct VS_OUTPUT
+{
+	float4 Pos : SV_POSITION;
+	float3 Dir : TEXCOORD0;
+};
+static const float PI = 3.14159265359f;
+static const float INV_PI = 1.0f / PI;
+static const float INV_TWO_PI = 1.0f / (2.0f * PI);
+float2 DirToEquirectUV(float3 dir)
+{
+	dir = normalize(dir);
+	float phi = atan2(dir.z, dir.x);
+	float theta = acos(clamp(dir.y, -1.0f, 1.0f));
+	float u = phi * INV_TWO_PI + 0.5f;
+	float v = theta * INV_PI;
+	return float2(u, v);
+}
+float4 main(VS_OUTPUT input) : SV_Target
+{
+	float2 uv = DirToEquirectUV(input.Dir);
+	float3 color = hdrEquirect.SampleLevel(samplerState, uv, 0).rgb;
+	return float4(color, 1.0f);
+}
