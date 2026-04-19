@@ -9,6 +9,13 @@ cbuffer CameraBuffer : register(b1)
     float3 CameraPos;
 };
 
+cbuffer ShadowLightBuffer : register(b4)
+{
+    matrix LightViewProj;
+    float3 LightDirection;
+    float ShadowStrength;
+};
+
 struct VS_INPUT
 {
     float3 Pos : POSITION;
@@ -25,6 +32,7 @@ struct PS_INPUT
     float3 Tangent : TEXCOORD3;
     float3 Bitangent : TEXCOORD4;
     float3 CameraPos : TEXCOORD5;
+    float4 ShadowPos : TEXCOORD6;
 };
 
 PS_INPUT main(VS_INPUT input)
@@ -33,6 +41,7 @@ PS_INPUT main(VS_INPUT input)
 
     float4 worldPos = mul(float4(input.Pos, 1.0f), Model);
     output.WorldPos = worldPos.xyz;
+    output.ShadowPos = mul(worldPos, LightViewProj);
     output.Pos = mul(worldPos, vp);
     output.Normal = normalize(mul(input.Normal, (float3x3)Model));
     output.TexCoord = input.TexCoord;

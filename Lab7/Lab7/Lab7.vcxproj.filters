@@ -337,5 +337,8 @@
     <None Include="models\columns\colonne.gltf">
       <Filter>models\columns</Filter>
     </None>
+    <None Include="ShadowVertex.vs">
+      <Filter>shader</Filter>
+    </None>
   </ItemGroup>
 </Project>

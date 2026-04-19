@@ -415,6 +415,7 @@
     <None Include="models\cakepop\Cake_ Pop.gltf" />
     <None Include="models\columns\colonne.bin" />
     <None Include="models\columns\colonne.gltf" />
+    <None Include="ShadowVertex.vs" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

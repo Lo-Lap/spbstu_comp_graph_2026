@@ -8,6 +8,8 @@
 #include "backends/imgui_impl_win32.h"
 
 #include <windowsx.h>
+#include <mmsystem.h>
+#pragma comment(lib, "winmm.lib")
 
 
 #define MAX_LOADSTRING 100
@@ -98,6 +100,10 @@ BOOL InitInstance(HINSTANCE hInstance, int nCmdShow)
         return FALSE;
     }
 
+    //PlaySound(L"audio\\music.wav", nullptr, SND_FILENAME | SND_ASYNC | SND_LOOP);
+    mciSendString(L"open \"audio\\atmosphere_soundtrack.mp3\" type mpegvideo alias bgm", nullptr, 0, nullptr);
+    mciSendString(L"play bgm repeat", nullptr, 0, nullptr);
+
     ShowWindow(hWnd, nCmdShow);
     UpdateWindow(hWnd);
     SetFocus(hWnd);
@@ -137,6 +143,10 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
         return 0;
 
     case WM_DESTROY:
+        //PlaySound(nullptr, nullptr, 0);
+        mciSendString(L"stop bgm", nullptr, 0, nullptr);
+        mciSendString(L"close bgm", nullptr, 0, nullptr);
+
         PostQuitMessage(0);
         break;
 

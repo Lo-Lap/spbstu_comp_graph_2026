@@ -127,7 +127,24 @@ public:
 
         m_pGroundVB(nullptr),
         m_pGroundIB(nullptr),
-        m_GroundIndexCount(0)
+        m_GroundIndexCount(0),
+
+        //shadow
+        m_pShadowMapTexture(nullptr),
+        m_pShadowMapDSV(nullptr),
+        m_pShadowMapSRV(nullptr),
+        m_pShadowVertexShader(nullptr),
+        m_pShadowCameraBuffer(nullptr),
+        m_pShadowParamsBuffer(nullptr),
+        m_pShadowLightBuffer(nullptr),
+        m_pShadowRasterState(nullptr),
+        m_pShadowSampler(nullptr),
+        m_pShadowDepthState(nullptr),
+        m_ShadowMapSize(2048),
+        m_ShadowLightDirection(XMFLOAT3(-0.45f, -1.0f, 0.25f)),
+        m_ShadowBias(0.00035f),
+        m_ShadowSlopeBias(1.0f),
+        m_ShadowStrength(0.9f)
 
     {
         for (int i = 0; i < kSphereCount; ++i)
@@ -249,16 +266,55 @@ private:
         bool ReceiveShadow = true;
     };
 
+    struct ShadowCameraBuffer
+    {
+        XMMATRIX LightViewProj;
+    };
+
+    struct ShadowParamsCB
+    {
+        XMFLOAT4 ShadowBiasAndTexelSize;
+    };
+
+    struct ShadowLightBuffer
+    {
+        XMMATRIX LightViewProj;
+        XMFLOAT3 LightDirection;
+        float ShadowStrength;
+    };
+
+    void RenderLightSources(const XMMATRIX& viewProj);
+
+    //scene
     std::vector<SceneModelDesc> GetSceneModelDescs() const;
     void LoadSceneModels();
+    void BuildSceneLayout();
 
+    //ground plane
     HRESULT CreateGroundPlane(float halfSize = 20.0f, float uvScale = 8.0f);
     void ReleaseGroundPlane();
-
-    void BuildSceneLayout();
     void RenderGroundPlane(const XMMATRIX& viewProj);
-
+    
+    //shadow
     void CollectShadowCasters();
+    HRESULT CreateShadowResources(UINT shadowMapSize = 2048);
+    void ReleaseShadowResources();
+    void RenderShadowPass();
+    void RenderGroundPlaneShadow();
+    void RenderAllSceneModelsShadow();
+    void RenderModelInstanceShadow(const SceneModelInstance& instance);
+    void RenderGltfNodeShadow(
+        const GltfModelResource& model,
+        int nodeIndex,
+        const XMMATRIX& instanceWorld
+    );
+    void DrawGltfPrimitiveShadow(
+        const GltfGpuPrimitive& primitive,
+        const XMMATRIX& world
+    );
+    void UpdateShadowBufferData();
+
+
 
     HRESULT LoadEnvironmentMap(const wchar_t* path);
     HRESULT LoadHDRTexture2D(const wchar_t* path, ID3D11ShaderResourceView** outSRV);
@@ -284,19 +340,12 @@ private:
     void ScanCubeMapsFolder();
 
     HRESULT ConfigureBackBuffer(UINT width, UINT height);
-    //void SetMVPBuffer();
     void RenderSkybox(const XMMATRIX& viewProj);
 
     void UpdateCameraAndLightBuffers(const XMMATRIX& viewProj);
     HRESULT CreateHDRSceneTexture(UINT width, UINT height);
 
-    //bool LoadModelFromFile(const std::wstring& path);
-
-    //HRESULT CreateGltfGpuResources();
-    //void ReleaseGltfGpuResources();
     HRESULT CreateTextureSRVFromFile(const std::wstring& path, ID3D11ShaderResourceView** outSRV);
-    /*void RenderGltfScene(const XMMATRIX& viewProj);
-    void DrawGltfPrimitive(const GltfGpuPrimitive& primitive, const XMMATRIX& world, const XMMATRIX& viewProj);*/
 
     bool LoadModelResource(const std::wstring& path, int& outResourceIndex);
 
@@ -322,18 +371,35 @@ private:
         const XMMATRIX& viewProj
     );
 
+    //bloom
     HRESULT CreateBloomResources(UINT width, UINT height);
     void ReleaseBloomResources();
     void ApplyBloom();
 
 
 private:
-    float m_LightBrightness[3] = { 1.0f, 0.9f, 0.9f };
+    //float m_LightBrightness[3] = { 1.0f, 0.9f, 0.9f };
+    float m_LightBrightness[3] = { 1.4f, 0.0f, 0.0f };
+
     XMFLOAT3 m_LightColors[3] =
     {
          XMFLOAT3(1.0f, 1.0f, 1.0f),
          XMFLOAT3(1.0f, 1.0f, 1.0f),
          XMFLOAT3(1.0f, 1.0f, 1.0f)
+    };
+
+    //XMFLOAT3 m_LightPositions[3] =
+    //{
+    // XMFLOAT3(0.0f, 5.5f, -5.5f),
+    // XMFLOAT3(-6.5f, 10.0f, 2.0f),
+    // XMFLOAT3(5.5f, 5.0f, 0.0f)
+    //};
+
+    XMFLOAT3 m_LightPositions[3] =
+    {
+     XMFLOAT3(5.5f, 10.0f, 0.0f),
+     XMFLOAT3(-6.5f, 10.0f, 2.0f),
+     XMFLOAT3(5.5f, 5.0f, 0.0f)
     };
 
     ID3D11Device* m_pDevice;
@@ -489,10 +555,28 @@ private:
     ID3D11Buffer* m_pGroundIB;
     UINT m_GroundIndexCount;
 
-    std::vector<SceneShadowItem> m_ShadowCasters;
+    
 
     std::vector<GltfModelResource> m_ModelResources;
     std::vector<SceneModelInstance> m_SceneModelInstances;
+
+    //shadow
+    std::vector<SceneShadowItem> m_ShadowCasters;
+    ID3D11Texture2D* m_pShadowMapTexture;
+    ID3D11DepthStencilView* m_pShadowMapDSV;
+    ID3D11ShaderResourceView* m_pShadowMapSRV;
+    ID3D11VertexShader* m_pShadowVertexShader;
+    ID3D11Buffer* m_pShadowCameraBuffer;
+    ID3D11Buffer* m_pShadowParamsBuffer;
+    ID3D11Buffer* m_pShadowLightBuffer;
+    ID3D11RasterizerState* m_pShadowRasterState;
+    ID3D11SamplerState* m_pShadowSampler;
+    ID3D11DepthStencilState* m_pShadowDepthState;
+    UINT m_ShadowMapSize;
+    XMFLOAT3 m_ShadowLightDirection;
+    float m_ShadowBias;
+    float m_ShadowSlopeBias;
+    float m_ShadowStrength;
 
 };
 #endif

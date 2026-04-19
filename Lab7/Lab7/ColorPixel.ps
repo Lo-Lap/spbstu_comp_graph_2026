@@ -4,9 +4,11 @@ TextureCube irradianceMap : register(t2);
 TextureCube prefilteredEnvMap : register(t3);
 Texture2D brdfLUT : register(t4);
 Texture2D emissiveTexture : register(t5);
-
+Texture2D shadowMap : register(t6);
 
 SamplerState samplerState : register(s0);
+SamplerState shadowSampler : register(s1);
+SamplerComparisonState shadowCmpSampler : register(s2);
 
 static const float PI = 3.14159265359f;
 static const float MIN_ROUGHNESS = 0.045f;
@@ -32,6 +34,12 @@ cbuffer MaterialBuffer : register(b3)
     float4 Emissive;
 };
 
+cbuffer ShadowParamsBuffer : register(b4)
+{
+    float4 ShadowBiasAndTexelSize;
+};
+
+
 struct PS_INPUT
 {
     float4 Pos : SV_POSITION;
@@ -41,6 +49,7 @@ struct PS_INPUT
     float3 Tangent : TEXCOORD3;
     float3 Bitangent : TEXCOORD4;
     float3 CameraPos : TEXCOORD5;
+    float4 ShadowPos : TEXCOORD6;
 };
 
 float3 CalculateNormalFromMap(float3 normal, float3 tangent, float3 bitangent, float2 texCoord, float normalStrength)
@@ -94,6 +103,48 @@ float ComputePointLightFalloff(float distanceToLight, float range)
     return invDist2 * rangeFade * rangeFade;
 };
 
+float ComputeShadowFactor(float4 shadowPos, float3 N, float3 L)
+{
+    float3 projCoords = shadowPos.xyz / max(shadowPos.w, 1e-5f);
+    
+    projCoords.x = projCoords.x * 0.5f + 0.5f;
+    projCoords.y = -projCoords.y * 0.5f + 0.5f;
+    projCoords.z = projCoords.z;
+    
+    if (projCoords.x < 0.0f || projCoords.x > 1.0f ||
+        projCoords.y < 0.0f || projCoords.y > 1.0f ||
+        projCoords.z < 0.0f || projCoords.z > 1.0f)
+    {
+        return 1.0f;
+    }
+    float constBias = ShadowBiasAndTexelSize.x;
+    float slopeBias = ShadowBiasAndTexelSize.y;
+    float texel = ShadowBiasAndTexelSize.z;
+    
+    float NdotL = saturate(dot(N, L));
+    float bias = max(constBias, slopeBias * (1.0f - NdotL));
+    
+    float shadow = 0.0f;
+    
+    [unroll]
+    for (int y = -1; y <= 1; ++y)
+    {
+        [unroll]
+        for (int x = -1; x <= 1; ++x)
+        {
+            float2 offset = float2(x, y) * texel;
+            shadow += shadowMap.SampleCmpLevelZero(
+                shadowCmpSampler,
+                projCoords.xy + offset,
+                projCoords.z - bias
+                );
+        }
+    }
+
+    shadow /= 9.0f;
+    return shadow;
+}
+
 float4 main(PS_INPUT input) : SV_Target
 {
     float metallic = saturate(Surface.x);
@@ -143,49 +194,45 @@ float4 main(PS_INPUT input) : SV_Target
     [unroll]
     for (int i = 0; i < 3; ++i)
     {
+        if (lights[i].Intensity <= 0.0001f || lights[i].Range <= 0.0001f)
+            continue;
+        
         float3 Lvec = lights[i].Position - input.WorldPos;
         float distanceToLight = length(Lvec);
         float3 L = Lvec / max(distanceToLight, 1e-4f);
         float3 H = normalize(V + L);
         float NdotL = saturate(dot(N, L));
-        //float NdotV = saturate(dot(N, V));
+        
+        float shadowFactor = 1.0f;
+        
+        if (i == 0)
+        {
+            shadowFactor = ComputeShadowFactor(input.ShadowPos, N, L);
+        }
+
         float NdotV_local = saturate(dot(N, V));
+
         if (NdotL <= 0.0f || NdotV_local <= 0.0f)
             continue;
+
         float attenuation = ComputePointLightFalloff(distanceToLight, lights[i].Range);
         float3 radiance = lights[i].Color * lights[i].Intensity * attenuation;
-        
         float NDF = DistributionGGX(N, H, roughness);
         float G = GeometrySmith(N, V, L, roughness);
         float3 F = FresnelSchlick(saturate(dot(H, V)), F0);
         
-        if (debugMode == 1) // NDF
-        {
-             return float4((NDF.xxx) * radiance * NdotL, 1.0f);
-        }
-
-        if (debugMode == 2) // Geometry
-        {
-             return float4((G.xxx) * radiance * NdotL, 1.0f);
-        }
-
-        if (debugMode == 3) // Fresnel
-        {
-            return float4((F) * radiance * NdotL, 1.0f);
-        }
-
         float3 numerator = NDF * G * F;
-        //float denominator = max(4.0f * NdotV * NdotL, 1e-4f);
         float denominator = max(4.0f * NdotV_local * NdotL, 1e-4f);
         float3 specular = numerator / denominator;
         float3 kS = F;
         float3 kD = (1.0f - kS) * (1.0f - metallic);
         float3 diffuse = kD * albedo / PI;
-        Lo += (diffuse + specular) * radiance * NdotL;
+        
+        float shadowStrength = ShadowBiasAndTexelSize.w;
+        float visibility = lerp(1.0f - shadowStrength, 1.0f, shadowFactor);
+        
+        Lo += (diffuse + specular) * radiance * NdotL * visibility;
     }
-    //float3 ambient = 0.015f * albedo * ao;
-    //float3 color = ambient + Lo;
-    //return float4(color, 1.0f);
 
     float NdotV = saturate(dot(N, V));
     float3 R = reflect(-V, N);
@@ -212,6 +259,7 @@ float4 main(PS_INPUT input) : SV_Target
     specularIBL *= enableSpecularIBL * specularIBLIntensity;
 
     float3 ambient = (diffuseIBL + specularIBL) * ao;
+    
     // debug views for IBL validation
     if (debugMode == 4) // Diffuse IBL
     {
