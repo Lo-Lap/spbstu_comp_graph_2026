@@ -4,7 +4,7 @@ TextureCube irradianceMap : register(t2);
 TextureCube prefilteredEnvMap : register(t3);
 Texture2D brdfLUT : register(t4);
 Texture2D emissiveTexture : register(t5);
-Texture2D shadowMap : register(t6);
+Texture2DArray shadowMap : register(t6);
 
 SamplerState samplerState : register(s0);
 SamplerState shadowSampler : register(s1);
@@ -36,7 +36,13 @@ cbuffer MaterialBuffer : register(b3)
 
 cbuffer ShadowParamsBuffer : register(b4)
 {
-    float4 ShadowBiasAndTexelSize;
+    float4 ShadowBiasTexelSizeBlend;
+};
+
+cbuffer ShadowLightBuffer : register(b5)
+{
+    matrix LightViewProj[4];
+    float4 CascadeSplits;
 };
 
 
@@ -49,7 +55,11 @@ struct PS_INPUT
     float3 Tangent : TEXCOORD3;
     float3 Bitangent : TEXCOORD4;
     float3 CameraPos : TEXCOORD5;
-    float4 ShadowPos : TEXCOORD6;
+    float4 ShadowPos0 : TEXCOORD6;
+    float4 ShadowPos1 : TEXCOORD7;
+    float4 ShadowPos2 : TEXCOORD8;
+    float4 ShadowPos3 : TEXCOORD9;
+    float ViewDepth : TEXCOORD10;
 };
 
 float3 CalculateNormalFromMap(float3 normal, float3 tangent, float3 bitangent, float2 texCoord, float normalStrength)
@@ -103,6 +113,7 @@ float ComputePointLightFalloff(float distanceToLight, float range)
     return invDist2 * rangeFade * rangeFade;
 };
 
+/*
 float ComputeShadowFactor(float4 shadowPos, float3 N, float3 L)
 {
     float3 projCoords = shadowPos.xyz / max(shadowPos.w, 1e-5f);
@@ -142,6 +153,82 @@ float ComputeShadowFactor(float4 shadowPos, float3 N, float3 L)
     }
 
     shadow /= 9.0f;
+    return shadow;
+}
+*/
+
+float SampleCascadeShadow(float4 shadowPos, int cascadeIndex, float3 N, float3 L)
+{
+    float3 projCoords = shadowPos.xyz / max(shadowPos.w, 1e-5f);
+    projCoords.x = projCoords.x * 0.5f + 0.5f;
+    projCoords.y = -projCoords.y * 0.5f + 0.5f;
+
+    if (projCoords.x < 0.0f || projCoords.x > 1.0f ||
+        projCoords.y < 0.0f || projCoords.y > 1.0f ||
+        projCoords.z < 0.0f || projCoords.z > 1.0f)
+    {
+        return 1.0f;
+    }
+
+    float constBias = ShadowBiasTexelSizeBlend.x;
+    float slopeBias = ShadowBiasTexelSizeBlend.y;
+    float texel = ShadowBiasTexelSizeBlend.z;
+    float NdotL = saturate(dot(N, L));
+    float bias = max(constBias, slopeBias * (1.0f - NdotL));
+    float shadow = 0.0f;
+    [unroll]
+    for (int y = -1; y <= 1; ++y)
+    {
+        [unroll]
+        for (int x = -1; x <= 1; ++x)
+        {
+            float2 offset = float2(x, y) * texel;
+            shadow += shadowMap.SampleCmpLevelZero(
+                shadowCmpSampler,
+                float3(projCoords.xy + offset, cascadeIndex),
+                projCoords.z - bias
+            );
+        }
+    }
+
+    return shadow / 9.0f;
+}
+
+int SelectCascade(float viewDepth)
+{
+    if (viewDepth < CascadeSplits.x) return 0;
+    if (viewDepth < CascadeSplits.y) return 1;
+    if (viewDepth < CascadeSplits.z) return 2;
+    return 3;
+}
+
+float ComputeCascadedShadowFactor(PS_INPUT input, float3 N, float3 L)
+{
+    int cascade = SelectCascade(input.ViewDepth);
+    float blendBand = ShadowBiasTexelSizeBlend.w;
+    float4 shadowPos[4] =
+    {
+        input.ShadowPos0,
+        input.ShadowPos1,
+        input.ShadowPos2,
+        input.ShadowPos3
+    };
+
+    float shadow = SampleCascadeShadow(shadowPos[cascade], cascade, N, L);
+    if (cascade < 3)
+    {
+        float splitValue =
+            (cascade == 0) ? CascadeSplits.x :
+            (cascade == 1) ? CascadeSplits.y :
+            CascadeSplits.z;
+        float distToSplit = abs(splitValue - input.ViewDepth);
+        if (distToSplit < blendBand)
+        {
+            float nextShadow = SampleCascadeShadow(shadowPos[cascade + 1], cascade + 1, N, L);
+            float t = saturate(distToSplit / blendBand);
+            shadow = lerp(nextShadow, shadow, t);
+        }
+    }
     return shadow;
 }
 
@@ -207,7 +294,7 @@ float4 main(PS_INPUT input) : SV_Target
         
         if (i == 0)
         {
-            shadowFactor = ComputeShadowFactor(input.ShadowPos, N, L);
+            shadowFactor = ComputeCascadedShadowFactor(input, N, L);
         }
 
         float NdotV_local = saturate(dot(N, V));
@@ -228,7 +315,7 @@ float4 main(PS_INPUT input) : SV_Target
         float3 kD = (1.0f - kS) * (1.0f - metallic);
         float3 diffuse = kD * albedo / PI;
         
-        float shadowStrength = ShadowBiasAndTexelSize.w;
+        float shadowStrength = ShadowBiasTexelSizeBlend.w;
         float visibility = lerp(1.0f - shadowStrength, 1.0f, shadowFactor);
         
         Lo += (diffuse + specular) * radiance * NdotL * visibility;

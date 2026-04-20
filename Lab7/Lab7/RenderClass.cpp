@@ -36,7 +36,10 @@ struct MatrixBuffer
 struct CameraBuffer
 {
     XMMATRIX vp;
+    XMMATRIX view;
     XMFLOAT3 cameraPos;
+    float padding;
+
 };
 
 struct ColorBuffer
@@ -123,7 +126,7 @@ std::vector<RenderClass::SceneModelDesc> RenderClass::GetSceneModelDescs() const
         {
             L"models/penguin/penguin.gltf",
             XMFLOAT3(-2.5f, 0.0f, 0.0f),
-            XMFLOAT3(90.0f, 180.0f, 0.0f),
+            XMFLOAT3(90.0f, 90.0f, 0.0f),
             XMFLOAT3(0.1f, 0.1f, 0.1f),
             true,
             true
@@ -143,15 +146,15 @@ std::vector<RenderClass::SceneModelDesc> RenderClass::GetSceneModelDescs() const
             XMFLOAT3(1.0f, 1.0f, 1.0f),
             true,
             true
-        }
-        //{
-        //    L"models/columns/colonne.gltf",
-        //    XMFLOAT3(-10.0f, 0.0f, 30.5f),
-        //    XMFLOAT3(0.0f, -45.0f, 0.0f),
-        //    XMFLOAT3(0.02f, 0.02f, 0.02f),
-        //    true,
-        //    true
-        //}
+        }/*,
+        {
+            L"models/columns/colonne.gltf",
+            XMFLOAT3(-10.0f, 0.0f, 30.5f),
+            XMFLOAT3(0.0f, -45.0f, 0.0f),
+            XMFLOAT3(0.02f, 0.02f, 0.02f),
+            true,
+            true
+        }*/
     };
 }
 
@@ -255,17 +258,17 @@ HRESULT RenderClass::Init(HWND hWnd, WCHAR szTitle[], WCHAR szWindowClass[])
             return result;
     }
 
-    const std::vector<SceneModelDesc> sceneModels = GetSceneModelDescs();
+    //const std::vector<SceneModelDesc> sceneModels = GetSceneModelDescs();
 
-    for (const auto& desc : sceneModels)
-    {
-        int resourceIndex = -1;
-        if (!LoadModelResource(desc.FilePath, resourceIndex))
-        {
-            std::wstring msg = L"Failed to load model: " + desc.FilePath + L"\n";
-            OutputDebugStringW(msg.c_str());
-        }
-    }
+    //for (const auto& desc : sceneModels)
+    //{
+    //    int resourceIndex = -1;
+    //    if (!LoadModelResource(desc.FilePath, resourceIndex))
+    //    {
+    //        std::wstring msg = L"Failed to load model: " + desc.FilePath + L"\n";
+    //        OutputDebugStringW(msg.c_str());
+    //    }
+    //}
 
     if (SUCCEEDED(result))
     {
@@ -329,14 +332,31 @@ HRESULT RenderClass::InitBufferShader()
     shadowSamplerDesc.AddressU = D3D11_TEXTURE_ADDRESS_BORDER;
     shadowSamplerDesc.AddressV = D3D11_TEXTURE_ADDRESS_BORDER;
     shadowSamplerDesc.AddressW = D3D11_TEXTURE_ADDRESS_BORDER;
+    shadowSamplerDesc.MipLODBias = 0.0f;
+    shadowSamplerDesc.MaxAnisotropy = 1;
     shadowSamplerDesc.ComparisonFunc = D3D11_COMPARISON_LESS_EQUAL;
     shadowSamplerDesc.BorderColor[0] = 1.0f;
     shadowSamplerDesc.BorderColor[1] = 1.0f;
     shadowSamplerDesc.BorderColor[2] = 1.0f;
     shadowSamplerDesc.BorderColor[3] = 1.0f;
-    result = m_pDevice->CreateSamplerState(&shadowSamplerDesc, &m_pShadowSampler);
-    if (FAILED(result))
-        return result;
+    shadowSamplerDesc.MinLOD = 0.0f;
+    shadowSamplerDesc.MaxLOD = D3D11_FLOAT32_MAX;
+    result = m_pDevice->CreateSamplerState(
+        &shadowSamplerDesc,
+        &m_pShadowSampler
+    );
+
+    if (FAILED(result) || m_pShadowSampler == nullptr)
+    {
+        MessageBox(
+            nullptr,
+            L"CreateSamplerState failed for m_pShadowSampler",
+            L"D3D11 Error",
+            MB_OK
+        );
+        return FAILED(result) ? result : E_FAIL;
+    }
+
 
     D3D11_RASTERIZER_DESC shadowRsDesc = {};
     shadowRsDesc.FillMode = D3D11_FILL_SOLID;
@@ -961,6 +981,11 @@ float RenderClass::ReadLuminanceFromGPU()
 
 void RenderClass::Terminate()
 {
+    if (m_pDeviceContext)
+    {
+        m_pDeviceContext->ClearState();
+        m_pDeviceContext->Flush();
+    }
     if (ImGui::GetCurrentContext() != nullptr)
     {
         ShutdownImGui();
@@ -1073,8 +1098,8 @@ void RenderClass::Terminate()
 
     if (m_pDeviceContext)
     {
-        m_pDeviceContext->ClearState();
-        m_pDeviceContext->Flush();
+        //m_pDeviceContext->ClearState();
+        //m_pDeviceContext->Flush();
         m_pDeviceContext->Release();
         m_pDeviceContext = nullptr;
     }
@@ -1285,12 +1310,6 @@ void RenderClass::TerminateBufferShader()
         m_pHdrToCubemapPS = nullptr;
     }
 
-    if (m_pPrefilteredEnvSRV)
-    {
-        m_pPrefilteredEnvSRV->Release();
-        m_pPrefilteredEnvSRV = nullptr;
-    }
-
     if (m_pSpecularPrefilterPS)
     {
         m_pSpecularPrefilterPS->Release();
@@ -1303,11 +1322,6 @@ void RenderClass::TerminateBufferShader()
         m_pSpecularPrefilterCB = nullptr;
     }
 
-    if (m_pSpecularPrefilterPS)
-    {
-        m_pSpecularPrefilterPS->Release();
-        m_pSpecularPrefilterPS = nullptr;
-    }
     if (m_pBRDFIntegrationPS)
     {
         m_pBRDFIntegrationPS->Release();
@@ -1775,33 +1789,44 @@ void RenderClass::Render()
 
     ScopedEvent frameEvent(m_pAnnotation, L"Frame");
 
-    {
-        ScopedEvent evt(m_pAnnotation, L"Clear");
-
-        UpdateShadowBufferData();
-
-        ID3D11RenderTargetView* sceneRTV = (m_DebugViewMode == DebugView_Final) ? m_pHDRSceneRTV : m_pRenderTargetView;
-        m_pDeviceContext->OMSetRenderTargets(1, &sceneRTV, m_pDepthView);
-
-        
-        float hdrClear[4] = { 0, 0, 0, 0 };
-        if (m_DebugViewMode == DebugView_Final)
-        {
-            float BackColor[4] = { 0.48f, 0.57f, 0.48f, 1.0f };
-            m_pDeviceContext->ClearRenderTargetView(m_pRenderTargetView, BackColor);
-
-            if (m_pHDRSceneRTV)
-                m_pDeviceContext->ClearRenderTargetView(m_pHDRSceneRTV, hdrClear);
-        }
-        else
-        {
-            m_pDeviceContext->ClearRenderTargetView(m_pRenderTargetView, hdrClear);
-        }
-        m_pDeviceContext->ClearDepthStencilView(m_pDepthView, D3D11_CLEAR_DEPTH, 1.0f, 0);
-    }
+    
+    ScopedEvent evt(m_pAnnotation, L"Clear");
 
     RECT rc;
     GetClientRect(FindWindow(m_szWindowClass, m_szTitle), &rc);
+    float aspect = static_cast<float>(rc.right - rc.left) / (rc.bottom - rc.top);
+
+    XMMATRIX cameraView = XMMatrixLookAtLH(
+        XMLoadFloat3(&m_CameraPosition),
+        XMLoadFloat3(&m_CubePosition),
+        XMVectorSet(0, 1, 0, 0)
+    );
+    XMMATRIX cameraProj = XMMatrixPerspectiveFovLH(
+        XM_PIDIV4,
+        aspect,
+        0.1f,
+        100.0f
+    );
+    UpdateCascadedShadowData(cameraView, cameraProj);
+
+    ID3D11RenderTargetView* sceneRTV = (m_DebugViewMode == DebugView_Final) ? m_pHDRSceneRTV : m_pRenderTargetView;
+    m_pDeviceContext->OMSetRenderTargets(1, &sceneRTV, m_pDepthView);
+
+        
+    float hdrClear[4] = { 0, 0, 0, 0 };
+    if (m_DebugViewMode == DebugView_Final)
+    {
+        float BackColor[4] = { 0.48f, 0.57f, 0.48f, 1.0f };
+        m_pDeviceContext->ClearRenderTargetView(m_pRenderTargetView, BackColor);
+
+        if (m_pHDRSceneRTV)
+            m_pDeviceContext->ClearRenderTargetView(m_pHDRSceneRTV, hdrClear);
+    }
+    else
+    {
+        m_pDeviceContext->ClearRenderTargetView(m_pRenderTargetView, hdrClear);
+    }
+    m_pDeviceContext->ClearDepthStencilView(m_pDepthView, D3D11_CLEAR_DEPTH, 1.0f, 0);
 
     D3D11_VIEWPORT vp = {};
     vp.Width = (FLOAT)(rc.right - rc.left);
@@ -1809,9 +1834,19 @@ void RenderClass::Render()
     vp.MinDepth = 0.0f;
     vp.MaxDepth = 1.0f;
     m_pDeviceContext->RSSetViewports(1, &vp);
-    RenderShadowPass();
+    RenderCascadedShadowPass();
 
-    float aspect = static_cast<float>(rc.right - rc.left) / (rc.bottom - rc.top);
+    sceneRTV = (m_DebugViewMode == DebugView_Final) ? m_pHDRSceneRTV : m_pRenderTargetView;
+    m_pDeviceContext->OMSetRenderTargets(1, &sceneRTV, m_pDepthView);
+    vp.Width = (FLOAT)(rc.right - rc.left);
+    vp.Height = (FLOAT)(rc.bottom - rc.top);
+    vp.MinDepth = 0.0f;
+    vp.MaxDepth = 1.0f;
+    vp.TopLeftX = 0.0f;
+    vp.TopLeftY = 0.0f;
+    m_pDeviceContext->RSSetViewports(1, &vp);
+
+    
     XMMATRIX viewProj = BuildViewProjMatrix(
         m_CameraPosition,
         m_LRAngle,
@@ -1878,6 +1913,8 @@ void RenderClass::UpdateCameraAndLightBuffers(const XMMATRIX& viewProj)
     CameraBuffer cameraBuffer = {};
     cameraBuffer.vp = XMMatrixTranspose(viewProj);
     cameraBuffer.cameraPos = m_CameraPosition;
+    cameraBuffer.view = XMMatrixTranspose(viewProj);
+
     D3D11_MAPPED_SUBRESOURCE mappedResource;
     HRESULT hr = m_pDeviceContext->Map(m_pVPBuffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &mappedResource);
     if (SUCCEEDED(hr))
@@ -2088,6 +2125,7 @@ void RenderClass::RenderGroundPlane(const XMMATRIX& viewProj)
     m_pDeviceContext->VSSetShader(m_pVertexShader, nullptr, 0);
     m_pDeviceContext->PSSetShader(m_pPixelShader, nullptr, 0);
     m_pDeviceContext->PSSetSamplers(0, 1, &m_pSamplerState);
+    m_pDeviceContext->PSSetSamplers(2, 1, &m_pShadowSampler);
 
     XMMATRIX world = XMMatrixIdentity();
     XMMATRIX worldT = XMMatrixTranspose(world);
@@ -2123,14 +2161,15 @@ void RenderClass::RenderGroundPlane(const XMMATRIX& viewProj)
     m_pDeviceContext->PSSetShaderResources(3, 1, &m_pPrefilteredEnvSRV); 
     m_pDeviceContext->PSSetShaderResources(4, 1, &m_pBRDFLUTSRV);
     m_pDeviceContext->PSSetShaderResources(5, 1, &nullSRV);
+    m_pDeviceContext->PSSetShaderResources(6, 1, &m_pShadowMapSRV);
 
     m_pDeviceContext->IASetVertexBuffers(0, 1, &m_pGroundVB, &stride, &offset);
     m_pDeviceContext->IASetIndexBuffer(m_pGroundIB, DXGI_FORMAT_R32_UINT, 0);
     
     m_pDeviceContext->VSSetConstantBuffers(4, 1, &m_pShadowLightBuffer);
     m_pDeviceContext->PSSetConstantBuffers(4, 1, &m_pShadowParamsBuffer);
-    m_pDeviceContext->PSSetShaderResources(6, 1, &m_pShadowMapSRV);
-    m_pDeviceContext->PSSetSamplers(1, 1, &m_pShadowSampler);
+    m_pDeviceContext->PSSetConstantBuffers(5, 1, &m_pShadowLightBuffer);
+
     m_pDeviceContext->PSSetSamplers(2, 1, &m_pShadowSampler);
     
     m_pDeviceContext->DrawIndexed(m_GroundIndexCount, 0, 0);
@@ -3092,7 +3131,7 @@ void RenderClass::DrawGltfPrimitive(
     m_pDeviceContext->VSSetConstantBuffers(4, 1, &m_pShadowLightBuffer);
     m_pDeviceContext->PSSetConstantBuffers(4, 1, &m_pShadowParamsBuffer);
     m_pDeviceContext->PSSetShaderResources(6, 1, &m_pShadowMapSRV);
-    m_pDeviceContext->PSSetSamplers(1, 1, &m_pShadowSampler);
+
     m_pDeviceContext->PSSetSamplers(2, 1, &m_pShadowSampler);
 
     m_pDeviceContext->DrawIndexed(primitive.IndexCount, 0, 0);
@@ -3130,6 +3169,7 @@ void RenderClass::RenderAllSceneModels(const XMMATRIX& viewProj)
     m_pDeviceContext->VSSetShader(m_pVertexShader, nullptr, 0);
     m_pDeviceContext->PSSetShader(m_pPixelShader, nullptr, 0);
     m_pDeviceContext->PSSetSamplers(0, 1, &m_pSamplerState);
+    m_pDeviceContext->PSSetSamplers(2, 1, &m_pShadowSampler);
     m_pDeviceContext->PSSetShaderResources(2, 1, &m_pIrradianceSRV);
     m_pDeviceContext->PSSetShaderResources(3, 1, &m_pPrefilteredEnvSRV);
     m_pDeviceContext->PSSetShaderResources(4, 1, &m_pBRDFLUTSRV);
@@ -3395,7 +3435,7 @@ void RenderClass::CollectShadowCasters()
 
 HRESULT RenderClass::CreateShadowResources(UINT shadowMapSize)
 {
-    ReleaseShadowResources();
+    ReleaseShadowMapResources();
     
     m_ShadowMapSize = shadowMapSize;
     
@@ -3403,8 +3443,9 @@ HRESULT RenderClass::CreateShadowResources(UINT shadowMapSize)
     texDesc.Width = shadowMapSize;
     texDesc.Height = shadowMapSize;
     texDesc.MipLevels = 1;
-    texDesc.ArraySize = 1;
+    texDesc.ArraySize = kShadowCascadeCount;
     texDesc.Format = DXGI_FORMAT_R32_TYPELESS;
+    texDesc.MiscFlags = 0;
     texDesc.SampleDesc.Count = 1;
     texDesc.Usage = D3D11_USAGE_DEFAULT;
     texDesc.BindFlags = D3D11_BIND_DEPTH_STENCIL | D3D11_BIND_SHADER_RESOURCE;
@@ -3413,19 +3454,35 @@ HRESULT RenderClass::CreateShadowResources(UINT shadowMapSize)
     if (FAILED(hr))
         return hr;
    
-    D3D11_DEPTH_STENCIL_VIEW_DESC dsvDesc = {};
+    for (UINT i = 0; i < kShadowCascadeCount; ++i)
+    {
+        D3D11_DEPTH_STENCIL_VIEW_DESC dsvDesc = {};
+        dsvDesc.Format = DXGI_FORMAT_D32_FLOAT;
+        dsvDesc.ViewDimension = D3D11_DSV_DIMENSION_TEXTURE2DARRAY;
+        dsvDesc.Texture2DArray.MipSlice = 0;
+        dsvDesc.Texture2DArray.FirstArraySlice = i;
+        dsvDesc.Texture2DArray.ArraySize = 1;
+        hr = m_pDevice->CreateDepthStencilView(m_pShadowMapTexture, &dsvDesc, &m_pShadowMapDSV[i]);
+        if (FAILED(hr))
+            return hr;
+    }
+
+    /*D3D11_DEPTH_STENCIL_VIEW_DESC dsvDesc = {};
     dsvDesc.Format = DXGI_FORMAT_D32_FLOAT;
     dsvDesc.ViewDimension = D3D11_DSV_DIMENSION_TEXTURE2D;
     dsvDesc.Texture2D.MipSlice = 0;
     
     hr = m_pDevice->CreateDepthStencilView(m_pShadowMapTexture, &dsvDesc, &m_pShadowMapDSV);
     if (FAILED(hr))
-        return hr;
+        return hr;*/
+
     D3D11_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
     srvDesc.Format = DXGI_FORMAT_R32_FLOAT;
-    srvDesc.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2D;
-    srvDesc.Texture2D.MipLevels = 1;
-    srvDesc.Texture2D.MostDetailedMip = 0;
+    srvDesc.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2DARRAY;
+    srvDesc.Texture2DArray.MipLevels = 1;
+    srvDesc.Texture2DArray.MostDetailedMip = 0;
+    srvDesc.Texture2DArray.FirstArraySlice = 0;
+    srvDesc.Texture2DArray.ArraySize = kShadowCascadeCount;
     
     hr = m_pDevice->CreateShaderResourceView(m_pShadowMapTexture, &srvDesc, &m_pShadowMapSRV);
     if (FAILED(hr))
@@ -3441,154 +3498,222 @@ HRESULT RenderClass::CreateShadowResources(UINT shadowMapSize)
     if (FAILED(hr))
         return hr;
     
-    cbDesc.ByteWidth = sizeof(ShadowParamsCB);
+    cbDesc.ByteWidth = sizeof(CascadedShadowParamsCB);
     hr = m_pDevice->CreateBuffer(&cbDesc, nullptr, &m_pShadowParamsBuffer);
     if (FAILED(hr))
         return hr;
     
-    cbDesc.ByteWidth = sizeof(ShadowLightBuffer);
+    cbDesc.ByteWidth = sizeof(CascadedShadowBuffer);
     hr = m_pDevice->CreateBuffer(&cbDesc, nullptr, &m_pShadowLightBuffer);
     if (FAILED(hr))
         return hr;
     return S_OK;
 }
 
-void RenderClass::ReleaseShadowResources()
+void RenderClass::ReleaseShadowMapResources()
 {
     if (m_pShadowMapSRV)
     {
         m_pShadowMapSRV->Release();
         m_pShadowMapSRV = nullptr;
     }
-    
-    if (m_pShadowMapDSV)
+    for (UINT i = 0; i < kShadowCascadeCount; ++i)
     {
-        m_pShadowMapDSV->Release();
-        m_pShadowMapDSV = nullptr;
+        if (m_pShadowMapDSV[i])
+        {
+            m_pShadowMapDSV[i]->Release();
+            m_pShadowMapDSV[i] = nullptr;
+        }
     }
-    
     if (m_pShadowMapTexture)
     {
         m_pShadowMapTexture->Release();
         m_pShadowMapTexture = nullptr;
     }
-    
-    if (m_pShadowVertexShader)
-    {
-        m_pShadowVertexShader->Release();
-        m_pShadowVertexShader = nullptr;
-    }
-    
     if (m_pShadowCameraBuffer)
     {
         m_pShadowCameraBuffer->Release();
         m_pShadowCameraBuffer = nullptr;
     }
-    
     if (m_pShadowParamsBuffer)
     {
         m_pShadowParamsBuffer->Release();
         m_pShadowParamsBuffer = nullptr;
     }
-    
     if (m_pShadowLightBuffer)
     {
         m_pShadowLightBuffer->Release();
         m_pShadowLightBuffer = nullptr;
     }
-    
+}
+
+void RenderClass::ReleaseShadowResources()
+{
+    ReleaseShadowMapResources();
+    if (m_pShadowVertexShader)
+    {
+        m_pShadowVertexShader->Release();
+        m_pShadowVertexShader = nullptr;
+    }
     if (m_pShadowRasterState)
     {
         m_pShadowRasterState->Release();
         m_pShadowRasterState = nullptr;
     }
-    
     if (m_pShadowSampler)
     {
         m_pShadowSampler->Release();
         m_pShadowSampler = nullptr;
     }
+    if (m_pShadowDepthState)
+    {
+        m_pShadowDepthState->Release();
+        m_pShadowDepthState = nullptr;
+    }
+
 }
 
-void RenderClass::UpdateShadowBufferData()
+void RenderClass::ComputeCascadeSplits(float nearZ, float farZ)
 {
-    XMVECTOR lightPos = XMLoadFloat3(&m_LightPositions[0]);
-
-    XMVECTOR sceneCenter = XMVectorSet(0.0f, 1.5f, 0.0f, 1.0f);
-    
-    XMVECTOR lightDir = XMVector3Normalize(sceneCenter - lightPos);
-    
-    XMVECTOR up = XMVectorSet(0.0f, 1.0f, 0.0f, 0.0f);
-    if (fabs(XMVectorGetX(XMVector3Dot(lightDir, up))) > 0.98f)
-        up = XMVectorSet(0.0f, 0.0f, 1.0f, 0.0f);
-    XMMATRIX lightView = XMMatrixLookAtLH(lightPos, sceneCenter, up);
-
-    XMMATRIX lightProj = XMMatrixPerspectiveFovLH(
-        XMConvertToRadians(110.0f),
-        1.0f,
-        0.1f,
-        80.0f
-    );
-    XMMATRIX lightViewProj = lightView * lightProj;
+    for (UINT i = 0; i < kShadowCascadeCount; ++i)
     {
-        ShadowCameraBuffer cb = {};
-        cb.LightViewProj = XMMatrixTranspose(lightViewProj);
-        D3D11_MAPPED_SUBRESOURCE mapped = {};
-        if (SUCCEEDED(m_pDeviceContext->Map(
-            m_pShadowCameraBuffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped)))
-        {
-            memcpy(mapped.pData, &cb, sizeof(cb));
-            m_pDeviceContext->Unmap(m_pShadowCameraBuffer, 0);
-        }
+        float p = (i + 1) / (float)kShadowCascadeCount;
+        float logSplit = nearZ * powf(farZ / nearZ, p);
+        float uniSplit = nearZ + (farZ - nearZ) * p;
+        float split = m_CascadeLambda * logSplit + (1.0f - m_CascadeLambda) * uniSplit;
+        m_CascadeData[i].SplitDepth = split;
     }
+}
+
+void RenderClass::BuildCascadeMatrices(const XMMATRIX& cameraView, const XMMATRIX& cameraProj)
+{
+    XMMATRIX invViewProj = XMMatrixInverse(nullptr, cameraView * cameraProj);
+    float nearZ = 0.1f;
+    float farZ = 100.0f;
+    ComputeCascadeSplits(nearZ, farZ);
+    XMVECTOR lightDir = XMVector3Normalize(XMLoadFloat3(&m_ShadowLightDirection));
+    float prevSplit = nearZ;
+    for (UINT cascade = 0; cascade < kShadowCascadeCount; ++cascade)
     {
-        ShadowParamsCB cb = {};
-        cb.ShadowBiasAndTexelSize = XMFLOAT4(
-            m_ShadowBias,
-            m_ShadowSlopeBias * 0.001f,
-            1.0f / (float)m_ShadowMapSize,
-            m_ShadowStrength
+        float splitDist = m_CascadeData[cascade].SplitDepth;
+        float xn = -1.0f, xf = 1.0f;
+        float yn = -1.0f, yf = 1.0f;
+        float zn = prevSplit;
+        float zf = splitDist;
+        XMVECTOR frustumCornersWS[8];
+        const float corners[8][3] =
+        {
+        { -1, -1, 0 }, { 1, -1, 0 }, { 1, 1, 0 }, { -1, 1, 0 },
+        { -1, -1, 1 }, { 1, -1, 1 }, { 1, 1, 1 }, { -1, 1, 1 }
+        };
+        for (int i = 0; i < 8; ++i)
+        {
+            XMVECTOR corner = XMVectorSet(corners[i][0], corners[i][1], corners[i][2], 1.0f);
+            frustumCornersWS[i] = XMVector3TransformCoord(corner, invViewProj);
+        }
+        float splitNearNdc = (zn - nearZ) / (farZ - nearZ);
+        float splitFarNdc = (zf - nearZ) / (farZ - nearZ);
+        for (int i = 0; i < 4; ++i)
+        {
+            frustumCornersWS[i] =
+                XMVectorLerp(frustumCornersWS[i], frustumCornersWS[i + 4], splitNearNdc);
+            frustumCornersWS[i + 4] =
+                XMVectorLerp(frustumCornersWS[i], frustumCornersWS[i + 4], splitFarNdc);
+        }
+        XMVECTOR frustumCenter = XMVectorZero();
+        for (int i = 0; i < 8; ++i)
+            frustumCenter += frustumCornersWS[i];
+        frustumCenter /= 8.0f;
+        float radius = 0.0f;
+        for (int i = 0; i < 8; ++i)
+        {
+            float dist = XMVectorGetX(XMVector3Length(frustumCornersWS[i] - frustumCenter));
+            radius = std::max(radius, dist);
+        }
+        radius = ceilf(radius * 16.0f) / 16.0f;
+        XMVECTOR lightPos = frustumCenter - lightDir * (radius * 2.0f);
+        XMVECTOR up = XMVectorSet(0, 1, 0, 0);
+        XMMATRIX lightView = XMMatrixLookAtLH(lightPos, frustumCenter, up);
+        XMVECTOR mins = XMVectorSet(FLT_MAX, FLT_MAX, FLT_MAX, 1.0f);
+        XMVECTOR maxs = XMVectorSet(-FLT_MAX, -FLT_MAX, -FLT_MAX, 1.0f);
+        for (int i = 0; i < 8; ++i)
+        {
+            XMVECTOR cornerLS = XMVector3TransformCoord(frustumCornersWS[i], lightView);
+            mins = XMVectorMin(mins, cornerLS);
+            maxs = XMVectorMax(maxs, cornerLS);
+        }
+        float minX = XMVectorGetX(mins);
+        float minY = XMVectorGetY(mins);
+        float minZ = XMVectorGetZ(mins);
+        float maxX = XMVectorGetX(maxs);
+        float maxY = XMVectorGetY(maxs);
+        float maxZ = XMVectorGetZ(maxs);
+
+        minZ -= 20.0f;
+        maxZ += 20.0f;
+        float cascadeSize = std::max(maxX - minX, maxY - minY);
+        float texelSize = cascadeSize / (float)m_ShadowMapSize;
+        minX = floorf(minX / texelSize) * texelSize;
+        minY = floorf(minY / texelSize) * texelSize;
+        maxX = floorf(maxX / texelSize) * texelSize;
+        maxY = floorf(maxY / texelSize) * texelSize;
+        XMMATRIX lightProj = XMMatrixOrthographicOffCenterLH(
+            minX, maxX,
+            minY, maxY,
+            minZ, maxZ
+        );
+        m_CascadeData[cascade].LightViewProj = lightView * lightProj;
+        prevSplit = splitDist;
+    }
+}
+
+void RenderClass::UpdateCascadedShadowData(const XMMATRIX& cameraView, const XMMATRIX& cameraProj)
+{
+    BuildCascadeMatrices(cameraView, cameraProj);
+    {
+        CascadedShadowBuffer cb = {};
+        for (UINT i = 0; i < kShadowCascadeCount; ++i)
+        {
+            cb.LightViewProj[i] = XMMatrixTranspose(m_CascadeData[i].LightViewProj);
+        }
+        cb.CascadeSplits = XMFLOAT4(
+            m_CascadeData[0].SplitDepth,
+            m_CascadeData[1].SplitDepth,
+            m_CascadeData[2].SplitDepth,
+            m_CascadeData[3].SplitDepth
         );
         D3D11_MAPPED_SUBRESOURCE mapped = {};
-        if (SUCCEEDED(m_pDeviceContext->Map(
-            m_pShadowParamsBuffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped)))
-        {
-            memcpy(mapped.pData, &cb, sizeof(cb));
-            m_pDeviceContext->Unmap(m_pShadowParamsBuffer, 0);
-        }
-    }
-    {
-        ShadowLightBuffer cb = {};
-        XMFLOAT3 dir;
-        XMStoreFloat3(&dir, lightDir);
-        cb.LightViewProj = XMMatrixTranspose(lightViewProj);
-        cb.LightDirection = dir;
-        cb.ShadowStrength = m_ShadowStrength;
-        D3D11_MAPPED_SUBRESOURCE mapped = {};
-        if (SUCCEEDED(m_pDeviceContext->Map(
-            m_pShadowLightBuffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped)))
+        if (SUCCEEDED(m_pDeviceContext->Map(m_pShadowLightBuffer, 0, D3D11_MAP_WRITE_DISCARD, 0,
+            &mapped)))
         {
             memcpy(mapped.pData, &cb, sizeof(cb));
             m_pDeviceContext->Unmap(m_pShadowLightBuffer, 0);
         }
     }
+    {
+        CascadedShadowParamsCB cb = {};
+        cb.ShadowBiasTexelSizeBlend = XMFLOAT4(
+            m_ShadowBias,
+            m_ShadowSlopeBias * 0.001f,
+            1.0f / (float)m_ShadowMapSize,
+            m_CascadeBlendBand
+        );
+        D3D11_MAPPED_SUBRESOURCE mapped = {};
+        if (SUCCEEDED(m_pDeviceContext->Map(m_pShadowParamsBuffer, 0, D3D11_MAP_WRITE_DISCARD, 0,
+            &mapped)))
+        {
+            memcpy(mapped.pData, &cb, sizeof(cb));
+            m_pDeviceContext->Unmap(m_pShadowParamsBuffer, 0);
+        }
+    }
 }
 
-void RenderClass::RenderShadowPass()
+void RenderClass::RenderCascadedShadowPass()
 {
-    if (!m_pShadowMapDSV || !m_pShadowVertexShader)
+    if (!m_pShadowVertexShader)
         return;
-    
+
     ID3D11RenderTargetView* nullRTV = nullptr;
-    m_pDeviceContext->OMSetRenderTargets(1, &nullRTV, m_pShadowMapDSV);
-    
-    m_pDeviceContext->ClearDepthStencilView(
-        m_pShadowMapDSV,
-        D3D11_CLEAR_DEPTH,
-        1.0f,
-        0
-    );
-    
     D3D11_VIEWPORT vp = {};
     vp.Width = (FLOAT)m_ShadowMapSize;
     vp.Height = (FLOAT)m_ShadowMapSize;
@@ -3596,21 +3721,34 @@ void RenderClass::RenderShadowPass()
     vp.MaxDepth = 1.0f;
     vp.TopLeftX = 0.0f;
     vp.TopLeftY = 0.0f;
+
     m_pDeviceContext->RSSetViewports(1, &vp);
-    
     m_pDeviceContext->RSSetState(m_pShadowRasterState);
     m_pDeviceContext->VSSetShader(m_pShadowVertexShader, nullptr, 0);
     m_pDeviceContext->PSSetShader(nullptr, nullptr, 0);
     m_pDeviceContext->IASetInputLayout(m_pLayout);
     m_pDeviceContext->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-    
-    m_pDeviceContext->VSSetConstantBuffers(4, 1, &m_pShadowCameraBuffer);
-    
-    RenderGroundPlaneShadow();
-    RenderAllSceneModelsShadow();
-    
+
+    for (UINT cascade = 0; cascade < kShadowCascadeCount; ++cascade)
+    {
+        ShadowCameraBuffer cb = {};
+        cb.LightViewProj = XMMatrixTranspose(m_CascadeData[cascade].LightViewProj);
+        m_pDeviceContext->UpdateSubresource(m_pShadowCameraBuffer, 0, nullptr, &cb, 0, 0);
+        m_pDeviceContext->VSSetConstantBuffers(4, 1, &m_pShadowCameraBuffer);
+        m_pDeviceContext->OMSetRenderTargets(1, &nullRTV, m_pShadowMapDSV[cascade]);
+        m_pDeviceContext->ClearDepthStencilView(
+            m_pShadowMapDSV[cascade],
+            D3D11_CLEAR_DEPTH,
+            1.0f,
+            0
+        );
+        RenderGroundPlaneShadow();
+        RenderAllSceneModelsShadow();
+    }
+
     m_pDeviceContext->RSSetState(nullptr);
 }
+
 
 void RenderClass::RenderGroundPlaneShadow()
 {
@@ -3673,7 +3811,6 @@ void RenderClass::Resize(HWND hWnd)
 
     ReleaseBloomResources();
 
-    ReleaseShadowResources();
     HRESULT hrShadow = CreateShadowResources(m_ShadowMapSize);
     if (FAILED(hrShadow))
     {

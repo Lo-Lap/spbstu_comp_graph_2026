@@ -131,7 +131,6 @@ public:
 
         //shadow
         m_pShadowMapTexture(nullptr),
-        m_pShadowMapDSV(nullptr),
         m_pShadowMapSRV(nullptr),
         m_pShadowVertexShader(nullptr),
         m_pShadowCameraBuffer(nullptr),
@@ -143,8 +142,8 @@ public:
         m_ShadowMapSize(2048),
         m_ShadowLightDirection(XMFLOAT3(-0.45f, -1.0f, 0.25f)),
         m_ShadowBias(0.00035f),
-        m_ShadowSlopeBias(1.0f),
-        m_ShadowStrength(0.9f)
+        m_ShadowSlopeBias(2.0f),
+        m_ShadowStrength(0.95f)
 
     {
         for (int i = 0; i < kSphereCount; ++i)
@@ -283,6 +282,24 @@ private:
         float ShadowStrength;
     };
 
+    static constexpr UINT kShadowCascadeCount = 4;
+
+    struct CascadeData
+    {
+        XMMATRIX LightViewProj = XMMatrixIdentity();
+        float SplitDepth = 0.0f;
+        float Padding[3] = {};
+    };
+    struct CascadedShadowBuffer
+    {
+        XMMATRIX LightViewProj[kShadowCascadeCount];
+        XMFLOAT4 CascadeSplits;
+    };
+    struct CascadedShadowParamsCB
+    {
+        XMFLOAT4 ShadowBiasTexelSizeBlend;
+    };
+
     void RenderLightSources(const XMMATRIX& viewProj);
 
     //scene
@@ -298,8 +315,13 @@ private:
     //shadow
     void CollectShadowCasters();
     HRESULT CreateShadowResources(UINT shadowMapSize = 2048);
+    void ReleaseShadowMapResources();
     void ReleaseShadowResources();
-    void RenderShadowPass();
+
+    void RenderCascadedShadowPass();
+    void ComputeCascadeSplits(float nearZ, float farZ);
+    void BuildCascadeMatrices(const XMMATRIX& cameraView, const XMMATRIX& cameraProj);
+
     void RenderGroundPlaneShadow();
     void RenderAllSceneModelsShadow();
     void RenderModelInstanceShadow(const SceneModelInstance& instance);
@@ -312,7 +334,7 @@ private:
         const GltfGpuPrimitive& primitive,
         const XMMATRIX& world
     );
-    void UpdateShadowBufferData();
+    void UpdateCascadedShadowData(const XMMATRIX& cameraView, const XMMATRIX& cameraProj);
 
 
 
@@ -397,7 +419,7 @@ private:
 
     XMFLOAT3 m_LightPositions[3] =
     {
-     XMFLOAT3(5.5f, 10.0f, 0.0f),
+     XMFLOAT3(5.5f, 20.0f, 0.0f),
      XMFLOAT3(-6.5f, 10.0f, 2.0f),
      XMFLOAT3(5.5f, 5.0f, 0.0f)
     };
@@ -562,13 +584,16 @@ private:
 
     //shadow
     std::vector<SceneShadowItem> m_ShadowCasters;
+
     ID3D11Texture2D* m_pShadowMapTexture;
-    ID3D11DepthStencilView* m_pShadowMapDSV;
+    ID3D11DepthStencilView* m_pShadowMapDSV[kShadowCascadeCount] = {};
     ID3D11ShaderResourceView* m_pShadowMapSRV;
+
     ID3D11VertexShader* m_pShadowVertexShader;
     ID3D11Buffer* m_pShadowCameraBuffer;
     ID3D11Buffer* m_pShadowParamsBuffer;
     ID3D11Buffer* m_pShadowLightBuffer;
+
     ID3D11RasterizerState* m_pShadowRasterState;
     ID3D11SamplerState* m_pShadowSampler;
     ID3D11DepthStencilState* m_pShadowDepthState;
@@ -577,6 +602,12 @@ private:
     float m_ShadowBias;
     float m_ShadowSlopeBias;
     float m_ShadowStrength;
+
+    CascadeData m_CascadeData[kShadowCascadeCount];
+    float m_CascadeSplits[kShadowCascadeCount] = { 0.05f, 0.15f, 0.35f, 1.0f };
+    float m_CascadeLambda = 0.65f;
+    float m_CascadeBlendBand = 0.08f;
+
 
 };
 #endif
