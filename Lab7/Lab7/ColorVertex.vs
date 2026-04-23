@@ -74,4 +74,5 @@ PS_INPUT main(VS_INPUT input)
     output.Bitangent = mul(bitangent, (float3x3)Model);
 
     return output;
+    return output;
 }

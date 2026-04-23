@@ -46,6 +46,9 @@
     <Filter Include="models\columns">
       <UniqueIdentifier>{0b2fb498-f181-4e22-9a03-495fdbbb02d3}</UniqueIdentifier>
     </Filter>
+    <Filter Include="audio">
+      <UniqueIdentifier>{99e4f310-ddc9-4cc4-a648-1a0d0334545d}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="framework.h">
@@ -153,27 +156,6 @@
     <CopyFileToFolders Include="cubemaps\shanghai_box.dds">
       <Filter>cubemaps</Filter>
     </CopyFileToFolders>
-    <Image Include="models\cakepop\Cake_Pop_ao-Cake_Pop_rough-Cake_Pop_metal.png">
-      <Filter>models\cakepop</Filter>
-    </Image>
-    <Image Include="models\cakepop\Cake_Pop_bcolor.png">
-      <Filter>models\cakepop</Filter>
-    </Image>
-    <Image Include="models\cakepop\Cake_Pop_norm.png">
-      <Filter>models\cakepop</Filter>
-    </Image>
-    <Image Include="models\bunny\bunny1_face_body.jpg">
-      <Filter>models\bunny</Filter>
-    </Image>
-    <Image Include="models\bunny\bunny1_scraf.jpg">
-      <Filter>models\bunny</Filter>
-    </Image>
-    <Image Include="models\bunny\bunny2_face_body.jpg">
-      <Filter>models\bunny</Filter>
-    </Image>
-    <Image Include="models\bunny\bunny2_scraf.jpg">
-      <Filter>models\bunny</Filter>
-    </Image>
     <Image Include="models\columns\Mable2_bColor.png">
       <Filter>models\columns</Filter>
     </Image>
@@ -191,15 +173,6 @@
     </Image>
     <Image Include="models\columns\Marble1_Normal.png">
       <Filter>models\columns</Filter>
-    </Image>
-    <Image Include="textures\rocky_terrain_02_diff_1k.dds">
-      <Filter>textures</Filter>
-    </Image>
-    <Image Include="textures\rocky_terrain_02_disp_1k.dds">
-      <Filter>textures</Filter>
-    </Image>
-    <Image Include="textures\rocky_terrain_02_spec_1k.dds">
-      <Filter>textures</Filter>
     </Image>
   </ItemGroup>
   <ItemGroup>
@@ -314,6 +287,57 @@
     <CopyFileToFolders Include="BloomBlur.ps">
       <Filter>shader</Filter>
     </CopyFileToFolders>
+    <CopyFileToFolders Include="ShadowVertex.vs">
+      <Filter>shader</Filter>
+    </CopyFileToFolders>
+    <CopyFileToFolders Include="audio\atmosphere_soundtrack.mp3">
+      <Filter>audio</Filter>
+    </CopyFileToFolders>
+    <CopyFileToFolders Include="models\bunny\bunny_blend.bin">
+      <Filter>models\bunny</Filter>
+    </CopyFileToFolders>
+    <CopyFileToFolders Include="models\bunny\bunny_blend.gltf">
+      <Filter>models\bunny</Filter>
+    </CopyFileToFolders>
+    <CopyFileToFolders Include="models\bunny\bunny_gltf.glb">
+      <Filter>models\bunny</Filter>
+    </CopyFileToFolders>
+    <CopyFileToFolders Include="models\bunny\bunny1_face_body.jpg">
+      <Filter>models\bunny</Filter>
+    </CopyFileToFolders>
+    <CopyFileToFolders Include="models\bunny\bunny1_scraf.jpg">
+      <Filter>models\bunny</Filter>
+    </CopyFileToFolders>
+    <CopyFileToFolders Include="models\bunny\bunny2_face_body.jpg">
+      <Filter>models\bunny</Filter>
+    </CopyFileToFolders>
+    <CopyFileToFolders Include="models\bunny\bunny2_scraf.jpg">
+      <Filter>models\bunny</Filter>
+    </CopyFileToFolders>
+    <CopyFileToFolders Include="models\cakepop\Cake_ Pop.bin">
+      <Filter>models\cakepop</Filter>
+    </CopyFileToFolders>
+    <CopyFileToFolders Include="models\cakepop\Cake_ Pop.gltf">
+      <Filter>models\cakepop</Filter>
+    </CopyFileToFolders>
+    <CopyFileToFolders Include="models\cakepop\Cake_Pop_ao-Cake_Pop_rough-Cake_Pop_metal.png">
+      <Filter>models\cakepop</Filter>
+    </CopyFileToFolders>
+    <CopyFileToFolders Include="models\cakepop\Cake_Pop_bcolor.png">
+      <Filter>models\cakepop</Filter>
+    </CopyFileToFolders>
+    <CopyFileToFolders Include="models\cakepop\Cake_Pop_norm.png">
+      <Filter>models\cakepop</Filter>
+    </CopyFileToFolders>
+    <CopyFileToFolders Include="textures\rocky_terrain_02_diff_1k.dds">
+      <Filter>textures</Filter>
+    </CopyFileToFolders>
+    <CopyFileToFolders Include="textures\rocky_terrain_02_disp_1k.dds">
+      <Filter>textures</Filter>
+    </CopyFileToFolders>
+    <CopyFileToFolders Include="textures\rocky_terrain_02_spec_1k.dds">
+      <Filter>textures</Filter>
+    </CopyFileToFolders>
   </ItemGroup>
   <ItemGroup>
     <None Include="imgui\imgui.vcxproj">
@@ -325,29 +349,11 @@
     <None Include="imgui\imgui.vcxproj.user">
       <Filter>imgui</Filter>
     </None>
-    <None Include="models\bunny\bunny_blend.gltf">
-      <Filter>models\bunny</Filter>
-    </None>
-    <None Include="models\bunny\bunny_gltf.glb">
-      <Filter>models\bunny</Filter>
-    </None>
-    <None Include="models\bunny\bunny_blend.bin">
-      <Filter>models\bunny</Filter>
-    </None>
-    <None Include="models\cakepop\Cake_ Pop.bin">
-      <Filter>models\cakepop</Filter>
-    </None>
-    <None Include="models\cakepop\Cake_ Pop.gltf">
-      <Filter>models\cakepop</Filter>
-    </None>
     <None Include="models\columns\colonne.bin">
       <Filter>models\columns</Filter>
     </None>
     <None Include="models\columns\colonne.gltf">
       <Filter>models\columns</Filter>
-    </None>
-    <None Include="ShadowVertex.vs">
-      <Filter>shader</Filter>
     </None>
   </ItemGroup>
 </Project>
