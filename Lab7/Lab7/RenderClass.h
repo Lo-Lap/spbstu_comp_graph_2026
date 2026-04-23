@@ -140,7 +140,8 @@ public:
         m_pShadowRasterState(nullptr),
         m_pShadowSampler(nullptr),
         m_pShadowDepthState(nullptr),
-        m_ShadowMapSize(2048),
+        //m_ShadowMapSize(2048),
+        m_ShadowMapSize(4096),
         m_ShadowLightDirection(XMFLOAT3(-0.4f, -1.0f, -0.25f)),
         m_ShadowBias(0.00035f),
         m_ShadowSlopeBias(2.0f),
@@ -230,7 +231,10 @@ private:
         XMMATRIX World = XMMatrixIdentity();
         UINT IndexCount = 0;
         bool IsGround = false;
+        XMFLOAT3 LocalBoundsMin = XMFLOAT3(0, 0, 0);
+        XMFLOAT3 LocalBoundsMax = XMFLOAT3(0, 0, 0);
     };
+
 
     struct GltfModelResource
     {
@@ -285,21 +289,34 @@ private:
 
     static constexpr UINT kShadowCascadeCount = 4;
 
+    enum ShadowMode
+    {
+        ShadowModeSimple = 0,
+        ShadowModePSSM = 1,
+        ShadowModeCSM = 2
+    };
+
     struct CascadeData
     {
-        XMMATRIX LightViewProj = XMMatrixIdentity();
+        XMMATRIX LightViewProj = XMMatrixIdentity();   
+        XMMATRIX WorldToLightUV = XMMatrixIdentity(); 
         float SplitDepth = 0.0f;
         float Padding[3] = {};
     };
+
     struct CascadedShadowBuffer
     {
-        XMMATRIX LightViewProj[kShadowCascadeCount];
+        XMMATRIX WorldToLightUV[kShadowCascadeCount];
         XMFLOAT4 CascadeSplits;
         XMFLOAT4 ShadowLightDirStrength;
+        XMFLOAT4 CsmRatio;
+        XMFLOAT4 CameraForward;
     };
+
     struct CascadedShadowParamsCB
     {
         XMFLOAT4 ShadowBiasTexelSizeBlend;
+        XMFLOAT4 ShadowOptions;
     };
 
     void RenderLightSources(const XMMATRIX& viewProj);
@@ -310,7 +327,7 @@ private:
     void BuildSceneLayout();
 
     //ground plane
-    HRESULT CreateGroundPlane(float halfSize = 20.0f, float uvScale = 8.0f);
+    HRESULT CreateGroundPlane(float halfSize = 100.0f, float uvScale = 50.0f);
     void ReleaseGroundPlane();
     void RenderGroundPlane(const XMMATRIX& viewProj);
     
@@ -321,7 +338,7 @@ private:
     void ReleaseShadowResources();
 
     void RenderCascadedShadowPass();
-    void ComputeCascadeSplits(float nearZ, float farZ);
+    void ComputeCascadeSplits();
     void BuildCascadeMatrices(const XMMATRIX& cameraView, const XMMATRIX& cameraProj);
 
     void RenderGroundPlaneShadow();
@@ -337,8 +354,6 @@ private:
         const XMMATRIX& world
     );
     void UpdateCascadedShadowData(const XMMATRIX& cameraView, const XMMATRIX& cameraProj);
-
-
 
     HRESULT LoadEnvironmentMap(const wchar_t* path);
     HRESULT LoadHDRTexture2D(const wchar_t* path, ID3D11ShaderResourceView** outSRV);
@@ -381,19 +396,26 @@ private:
     void PrecomputeSceneModelTransforms();
 
     void RenderAllSceneModels(const XMMATRIX& viewProj);
-    void RenderModelInstance(const SceneModelInstance& instance, const XMMATRIX& viewProj);
+
+    void RenderModelInstance(
+        const SceneModelInstance& instance,
+        const XMMATRIX& viewProj
+    );
+
     void RenderGltfNode(
         const GltfModelResource& model,
         int nodeIndex,
         const XMMATRIX& viewProj,
-        const XMMATRIX& instanceWorld
+        const XMMATRIX& instanceWorld,
+        bool receiveShadow
     );
 
     void DrawGltfPrimitive(
         const GltfModelResource& model,
         const GltfGpuPrimitive& primitive,
         const XMMATRIX& world,
-        const XMMATRIX& viewProj
+        const XMMATRIX& viewProj,
+        bool receiveShadow
     );
 
     //bloom
@@ -579,6 +601,7 @@ private:
     ID3D11Buffer* m_pGroundVB;
     ID3D11Buffer* m_pGroundIB;
     UINT m_GroundIndexCount;
+    float m_GroundHalfSize = 100.0f;
 
     
 
@@ -608,13 +631,22 @@ private:
 
     CascadeData m_CascadeData[kShadowCascadeCount];
     float m_CascadeSplits[kShadowCascadeCount] = { 0.05f, 0.15f, 0.35f, 1.0f };
+
     float m_CascadeLambda = 0.65f;
     float m_CascadeBlendBand = 0.08f;
+
+    //UINT m_ShadowMapSize = 4096;
+    ShadowMode m_ShadowMode = ShadowModePSSM;
+
+    bool  m_TintSplits = false;
+
     bool m_ShowCascadeSplitColors;
 
     float m_CameraNearZ = 0.1f;
-    float m_CameraFarZ = 100.0f;
-    float m_ShadowCascadeFarZ = 45.0f;
+    float m_CameraFarZ = 350.0f;
+
+    float m_ShadowSplitDists[kShadowCascadeCount] = { 10.0f, 33.0f, 100.0f, 300.0f };
+    float m_ShadowCascadeFarZ = 120.0f;
 
 };
 #endif

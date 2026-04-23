@@ -368,10 +368,13 @@ HRESULT RenderClass::InitBufferShader()
     shadowRsDesc.FillMode = D3D11_FILL_SOLID;
     shadowRsDesc.CullMode = D3D11_CULL_BACK;
     shadowRsDesc.DepthClipEnable = TRUE;
-    shadowRsDesc.SlopeScaledDepthBias = (INT)m_ShadowSlopeBias;
+
     shadowRsDesc.DepthBias = (INT)(m_ShadowBias * 100000.0f);
+    shadowRsDesc.SlopeScaledDepthBias = m_ShadowSlopeBias;
     shadowRsDesc.DepthBiasClamp = 0.0f;
+
     result = m_pDevice->CreateRasterizerState(&shadowRsDesc, &m_pShadowRasterState);
+
     if (FAILED(result))
         return result;
 
@@ -2079,6 +2082,7 @@ HRESULT RenderClass::CreateHDRSceneTexture(UINT width, UINT height)
 HRESULT RenderClass::CreateGroundPlane(float halfSize, float uvScale)
 {
     ReleaseGroundPlane();
+    m_GroundHalfSize = halfSize;
 
     GroundVertex vertices[] =
     {
@@ -2156,12 +2160,13 @@ void RenderClass::RenderGroundPlane(const XMMATRIX& viewProj)
         m_SpecularIBLIntensity
     );
     materialParams.Emissive = XMFLOAT4(0, 0, 0, 0);
+
     materialParams.Extra = XMFLOAT4(
         m_ShowCascadeSplitColors ? 1.0f : 0.0f,
-        0.0f,
+        1.0f,
         0.0f,
         0.0f
-    );
+    );;
 
     m_pDeviceContext->UpdateSubresource(m_pMaterialBuffer, 0, nullptr, &materialParams, 0, 0);
     m_pDeviceContext->PSSetConstantBuffers(3, 1, &m_pMaterialBuffer);
@@ -3057,7 +3062,8 @@ void RenderClass::DrawGltfPrimitive(
     const GltfModelResource& model,
     const GltfGpuPrimitive& primitive,
     const XMMATRIX& world,
-    const XMMATRIX& viewProj)
+    const XMMATRIX& viewProj,
+    bool receiveShadow)
 {
     if (!primitive.VertexBuffer || !primitive.IndexBuffer || primitive.IndexCount == 0)
         return;
@@ -3079,6 +3085,13 @@ void RenderClass::DrawGltfPrimitive(
         m_EnableSpecularIBL ? 1.0f : 0.0f,
         m_DiffuseIBLIntensity,
         m_SpecularIBLIntensity
+    );
+
+    materialParams.Extra = XMFLOAT4(
+        0.0f,
+        receiveShadow ? 1.0f : 0.0f,
+        0.0f,
+        0.0f
     );
 
     ID3D11ShaderResourceView* albedoSRV = nullptr;
@@ -3143,6 +3156,7 @@ void RenderClass::DrawGltfPrimitive(
 
     m_pDeviceContext->VSSetConstantBuffers(4, 1, &m_pShadowLightBuffer);
     m_pDeviceContext->PSSetConstantBuffers(4, 1, &m_pShadowParamsBuffer);
+    m_pDeviceContext->PSSetConstantBuffers(5, 1, &m_pShadowLightBuffer);
     m_pDeviceContext->PSSetShaderResources(6, 1, &m_pShadowMapSRV);
 
     m_pDeviceContext->PSSetSamplers(2, 1, &m_pShadowSampler);
@@ -3154,7 +3168,8 @@ void RenderClass::RenderGltfNode(
     const GltfModelResource& model,
     int nodeIndex,
     const XMMATRIX& viewProj,
-    const XMMATRIX& instanceWorld)
+    const XMMATRIX& instanceWorld,
+    bool receiveShadow)
 {
     if (nodeIndex < 0 || nodeIndex >= (int)model.Scene.Nodes.size())
         return;
@@ -3168,11 +3183,11 @@ void RenderClass::RenderGltfNode(
     {
         const GltfGpuMesh& mesh = model.GpuMeshes[node.MeshIndex];
         for (const auto& prim : mesh.Primitives)
-            DrawGltfPrimitive(model, prim, finalWorld, viewProj);
+            DrawGltfPrimitive(model, prim, finalWorld, viewProj, receiveShadow);
     }
 
     for (int child : node.Children)
-        RenderGltfNode(model, child, viewProj, finalWorld);
+        RenderGltfNode(model, child, viewProj, finalWorld, receiveShadow);
 }
 
 void RenderClass::RenderAllSceneModels(const XMMATRIX& viewProj)
@@ -3217,7 +3232,13 @@ void RenderClass::RenderModelInstance(const SceneModelInstance& instance, const 
 
     for (int rootNode : model.Scene.RootNodes)
     {
-        RenderGltfNode(model, rootNode, viewProj, instance.PrecomputedWorld);
+        RenderGltfNode(
+            model,
+            rootNode,
+            viewProj,
+            instance.PrecomputedWorld,
+            instance.ReceiveShadow
+        );
     }
 }
 
@@ -3391,6 +3412,12 @@ void RenderClass::ApplyBloom()
 
 // shadows
 
+static XMMATRIX MakeShadowUvMatrix()
+{
+    return XMMatrixScaling(0.5f, -0.5f, 1.0f) *
+        XMMatrixTranslation(0.5f, 0.5f, 0.0f);
+}
+
 void RenderClass::CollectShadowCasters()
 {
     m_ShadowCasters.clear();
@@ -3425,16 +3452,34 @@ void RenderClass::CollectShadowCasters()
                 XMMATRIX nodeWorld = XMLoadFloat4x4(&node.WorldMatrix);
                 XMMATRIX finalWorld = nodeWorld * inst.PrecomputedWorld;
 
-                if (node.MeshIndex >= 0 && node.MeshIndex < (int)model.GpuMeshes.size())
+                if (node.MeshIndex >= 0 &&
+                    node.MeshIndex < (int)model.GpuMeshes.size() &&
+                    node.MeshIndex < (int)model.Scene.Meshes.size())
                 {
-                    const GltfGpuMesh& mesh = model.GpuMeshes[node.MeshIndex];
-
-                    for (const auto& prim : mesh.Primitives)
+                    const GltfGpuMesh& gpuMesh = model.GpuMeshes[node.MeshIndex];
+                    const GltfMeshData& cpuMesh = model.Scene.Meshes[node.MeshIndex];
+                    const size_t primCount = std::min(gpuMesh.Primitives.size(), cpuMesh.Primitives.size());
+                    for (size_t primIndex = 0; primIndex < primCount; ++primIndex)
                     {
+                        const auto& gpuPrim = gpuMesh.Primitives[primIndex];
+                        const auto& cpuPrim = cpuMesh.Primitives[primIndex];
+                        XMFLOAT3 bmin(FLT_MAX, FLT_MAX, FLT_MAX);
+                        XMFLOAT3 bmax(-FLT_MAX, -FLT_MAX, -FLT_MAX);
+                        for (const auto& v : cpuPrim.Vertices)
+                        {
+                            bmin.x = std::min(bmin.x, v.Position.x);
+                            bmin.y = std::min(bmin.y, v.Position.y);
+                            bmin.z = std::min(bmin.z, v.Position.z);
+                            bmax.x = std::max(bmax.x, v.Position.x);
+                            bmax.y = std::max(bmax.y, v.Position.y);
+                            bmax.z = std::max(bmax.z, v.Position.z);
+                        }
                         SceneShadowItem item = {};
                         item.World = finalWorld;
-                        item.IndexCount = prim.IndexCount;
+                        item.IndexCount = gpuPrim.IndexCount;
                         item.IsGround = false;
+                        item.LocalBoundsMin = bmin;
+                        item.LocalBoundsMax = bmax;
                         m_ShadowCasters.push_back(item);
                     }
                 }
@@ -3586,93 +3631,101 @@ void RenderClass::ReleaseShadowResources()
 
 }
 
-void RenderClass::ComputeCascadeSplits(float nearZ, float farZ)
+void RenderClass::ComputeCascadeSplits() 
 {
     for (UINT i = 0; i < kShadowCascadeCount; ++i)
     {
+        float nearZ = m_CameraNearZ;
+        float farZ = std::min(m_CameraFarZ, m_ShadowCascadeFarZ);
         float p = (i + 1) / (float)kShadowCascadeCount;
         float logSplit = nearZ * powf(farZ / nearZ, p);
         float uniSplit = nearZ + (farZ - nearZ) * p;
         float split = m_CascadeLambda * logSplit + (1.0f - m_CascadeLambda) * uniSplit;
-        m_CascadeData[i].SplitDepth = split;
+        m_ShadowSplitDists[i] = split;
+        m_CascadeData[i].SplitDepth = m_ShadowSplitDists[i];
     }
+}
+
+static void BuildAabbCorners(const XMFLOAT3& bmin, const XMFLOAT3& bmax, XMVECTOR outCorners[8])
+{
+    outCorners[0] = XMVectorSet(bmin.x, bmin.y, bmin.z, 1.0f);
+    outCorners[1] = XMVectorSet(bmax.x, bmin.y, bmin.z, 1.0f);
+    outCorners[2] = XMVectorSet(bmax.x, bmax.y, bmin.z, 1.0f);
+    outCorners[3] = XMVectorSet(bmin.x, bmax.y, bmin.z, 1.0f);
+    outCorners[4] = XMVectorSet(bmin.x, bmin.y, bmax.z, 1.0f);
+    outCorners[5] = XMVectorSet(bmax.x, bmin.y, bmax.z, 1.0f);
+    outCorners[6] = XMVectorSet(bmax.x, bmax.y, bmax.z, 1.0f);
+    outCorners[7] = XMVectorSet(bmin.x, bmax.y, bmax.z, 1.0f);
 }
 
 void RenderClass::BuildCascadeMatrices(const XMMATRIX& cameraView, const XMMATRIX& cameraProj)
 {
-    XMMATRIX invViewProj = XMMatrixInverse(nullptr, cameraView * cameraProj);
-    float nearZ = m_CameraNearZ;
-    float farZ = m_ShadowCascadeFarZ;
-    ComputeCascadeSplits(nearZ, farZ);
-    XMVECTOR lightDir = XMVector3Normalize(XMLoadFloat3(&m_ShadowLightDirection));
+    const XMMATRIX invViewProj = XMMatrixInverse(nullptr, cameraView * cameraProj);
+    const XMVECTOR lightDir = XMVector3Normalize(XMLoadFloat3(&m_ShadowLightDirection));
+    XMVECTOR lightUp = XMVectorSet(0, 1, 0, 0);
+    if (fabsf(XMVectorGetX(XMVector3Dot(lightDir, lightUp))) > 0.95f)
+        lightUp = XMVectorSet(0, 0, 1, 0);
 
-    float prevSplit = nearZ;
-    for (UINT cascade = 0; cascade < kShadowCascadeCount; ++cascade)
+    const XMMATRIX uv = MakeShadowUvMatrix();
+    const float nearZ = m_CameraNearZ;
+    const float farZ = std::min(m_CameraFarZ, m_ShadowCascadeFarZ);
+
+    XMVECTOR frustumCornersWS[8];
+    const float corners[8][3] =
     {
-        float splitDist = m_CascadeData[cascade].SplitDepth;
-        float xn = -1.0f, xf = 1.0f;
-        float yn = -1.0f, yf = 1.0f;
-        float zn = prevSplit;
-        float zf = splitDist;
-        XMVECTOR frustumCornersWS[8];
-        const float corners[8][3] =
-        {
         { -1, -1, 0 }, { 1, -1, 0 }, { 1, 1, 0 }, { -1, 1, 0 },
         { -1, -1, 1 }, { 1, -1, 1 }, { 1, 1, 1 }, { -1, 1, 1 }
-        };
-        for (int i = 0; i < 8; ++i)
-        {
-            XMVECTOR corner = XMVectorSet(corners[i][0], corners[i][1], corners[i][2], 1.0f);
-            frustumCornersWS[i] = XMVector3TransformCoord(corner, invViewProj);
-        }
-        float splitNearNdc = (zn - nearZ) / (farZ - nearZ);
-        float splitFarNdc = (zf - nearZ) / (farZ - nearZ);
+    };
+    for (int i = 0; i < 8; ++i)
+    {
+        XMVECTOR corner = XMVectorSet(corners[i][0], corners[i][1], corners[i][2], 1.0f);
+        frustumCornersWS[i] = XMVector3TransformCoord(corner, invViewProj);
+    }
+
+    float prevSplit = nearZ;
+
+    for (UINT cascade = 0; cascade < kShadowCascadeCount; ++cascade)
+    {
+        const float splitDist = std::min(m_ShadowSplitDists[cascade], farZ);
+        const float splitNearNdc = (prevSplit - nearZ) / (farZ - nearZ);
+        const float splitFarNdc = (splitDist - nearZ) / (farZ - nearZ);
+
+        XMVECTOR cornersWS[8];
+
         for (int i = 0; i < 4; ++i)
         {
             XMVECTOR nearCorner = frustumCornersWS[i];
             XMVECTOR farCorner = frustumCornersWS[i + 4];
-            frustumCornersWS[i] = XMVectorLerp(
-                nearCorner,
-                farCorner,
-                splitNearNdc
-            );
-            frustumCornersWS[i + 4] = XMVectorLerp(
-                nearCorner,
-                farCorner,
-                splitFarNdc
-            );
+            cornersWS[i] = XMVectorLerp(nearCorner, farCorner, splitNearNdc);
+            cornersWS[i + 4] = XMVectorLerp(nearCorner, farCorner, splitFarNdc);
         }
 
         XMVECTOR frustumCenter = XMVectorZero();
         for (int i = 0; i < 8; ++i)
-            frustumCenter += frustumCornersWS[i];
-        frustumCenter /= 8.0f;
+            frustumCenter += cornersWS[i];
+        frustumCenter *= (1.0f / 8.0f);
+
         float radius = 0.0f;
         for (int i = 0; i < 8; ++i)
         {
-            float dist = XMVectorGetX(XMVector3Length(frustumCornersWS[i] - frustumCenter));
+            float dist = XMVectorGetX(XMVector3Length(cornersWS[i] - frustumCenter));
             radius = std::max(radius, dist);
         }
         radius = ceilf(radius * 16.0f) / 16.0f;
-        XMVECTOR lightPos = frustumCenter - lightDir * (radius * 4.0f);
-        XMVECTOR up = XMVectorSet(0, 1, 0, 0);
-        if (fabsf(XMVectorGetX(XMVector3Dot(lightDir, up))) > 0.95f)
-        {
-            up = XMVectorSet(0, 0, 1, 0);
-        }
-        XMMATRIX lightView = XMMatrixLookAtLH(
-            lightPos,
-            frustumCenter,
-            up
-        );
+
+        const XMVECTOR lightPos = frustumCenter - lightDir * (radius * 4.0f + 20.0f);
+        const XMMATRIX lightView = XMMatrixLookAtLH(lightPos, frustumCenter, lightUp);
+
         XMVECTOR mins = XMVectorSet(FLT_MAX, FLT_MAX, FLT_MAX, 1.0f);
         XMVECTOR maxs = XMVectorSet(-FLT_MAX, -FLT_MAX, -FLT_MAX, 1.0f);
+
         for (int i = 0; i < 8; ++i)
         {
-            XMVECTOR cornerLS = XMVector3TransformCoord(frustumCornersWS[i], lightView);
-            mins = XMVectorMin(mins, cornerLS);
-            maxs = XMVectorMax(maxs, cornerLS);
+            XMVECTOR ls = XMVector3TransformCoord(cornersWS[i], lightView);
+            mins = XMVectorMin(mins, ls);
+            maxs = XMVectorMax(maxs, ls);
         }
+
         float minX = XMVectorGetX(mins);
         float minY = XMVectorGetY(mins);
         float minZ = XMVectorGetZ(mins);
@@ -3680,23 +3733,42 @@ void RenderClass::BuildCascadeMatrices(const XMMATRIX& cameraView, const XMMATRI
         float maxY = XMVectorGetY(maxs);
         float maxZ = XMVectorGetZ(maxs);
 
-        minZ -= 20.0f;
-        maxZ += 20.0f;
+        float casterMinZ = minZ;
+        float casterMaxZ = maxZ;
+        for (const SceneShadowItem& caster : m_ShadowCasters)
+        {
+            XMVECTOR localCorners[8];
+            BuildAabbCorners(caster.LocalBoundsMin, caster.LocalBoundsMax, localCorners);
+            for (int i = 0; i < 8; ++i)
+            {
+                XMVECTOR worldCorner = XMVector3TransformCoord(localCorners[i], caster.World);
+                XMVECTOR ls = XMVector3TransformCoord(worldCorner, lightView);
+                casterMinZ = std::min(casterMinZ, XMVectorGetZ(ls));
+                casterMaxZ = std::max(casterMaxZ, XMVectorGetZ(ls));
+            }
+        }
+
+        minZ = casterMinZ - 35.0f;
+        maxZ = casterMaxZ + 35.0f;
 
         float cascadeSize = std::max(maxX - minX, maxY - minY);
-        float texelSize = cascadeSize / (float)m_ShadowMapSize;
+        float texelWorld = cascadeSize / float(m_ShadowMapSize);
+        float centerX = 0.5f * (minX + maxX);
+        float centerY = 0.5f * (minY + maxY);
+        centerX = floorf(centerX / texelWorld) * texelWorld;
+        centerY = floorf(centerY / texelWorld) * texelWorld;
 
-        float centerX = (minX + maxX) * 0.5f;
-        float centerY = (minY + maxY) * 0.5f;
-
-        centerX = floorf(centerX / texelSize) * texelSize;
-        centerY = floorf(centerY / texelSize) * texelSize;
-
-        float halfSize = cascadeSize * 0.5f;
+        float halfSize = 0.5f * cascadeSize;
         minX = centerX - halfSize;
         maxX = centerX + halfSize;
         minY = centerY - halfSize;
         maxY = centerY + halfSize;
+
+        const float xyPadding = std::max(texelWorld * 8.0f, 2.0f);
+        minX -= xyPadding;
+        maxX += xyPadding;
+        minY -= xyPadding;
+        maxY += xyPadding;
 
         XMMATRIX lightProj = XMMatrixOrthographicOffCenterLH(
             minX, maxX,
@@ -3705,59 +3777,85 @@ void RenderClass::BuildCascadeMatrices(const XMMATRIX& cameraView, const XMMATRI
         );
 
         m_CascadeData[cascade].LightViewProj = lightView * lightProj;
+        m_CascadeData[cascade].WorldToLightUV = lightView * lightProj * uv;
+        m_CascadeData[cascade].SplitDepth = splitDist;
+
         prevSplit = splitDist;
     }
 }
 
 void RenderClass::UpdateCascadedShadowData(const XMMATRIX& cameraView, const XMMATRIX& cameraProj)
 {
+    ComputeCascadeSplits();
     BuildCascadeMatrices(cameraView, cameraProj);
+
+    CascadedShadowBuffer lightCB = {};
+    for (UINT i = 0; i < kShadowCascadeCount; ++i)
     {
-        CascadedShadowBuffer cb = {};
-        for (UINT i = 0; i < kShadowCascadeCount; ++i)
-        {
-            cb.LightViewProj[i] = XMMatrixTranspose(m_CascadeData[i].LightViewProj);
-        }
-        cb.CascadeSplits = XMFLOAT4(
-            m_CascadeData[0].SplitDepth,
-            m_CascadeData[1].SplitDepth,
-            m_CascadeData[2].SplitDepth,
-            m_CascadeData[3].SplitDepth
-        );
-
-        XMVECTOR lightDirV = XMVector3Normalize(XMLoadFloat3(&m_ShadowLightDirection));
-        XMFLOAT3 lightDir;
-        XMStoreFloat3(&lightDir, lightDirV);
-        cb.ShadowLightDirStrength = XMFLOAT4(
-            lightDir.x,
-            lightDir.y,
-            lightDir.z,
-            m_ShadowStrength
-        );
-
-        D3D11_MAPPED_SUBRESOURCE mapped = {};
-        if (SUCCEEDED(m_pDeviceContext->Map(m_pShadowLightBuffer, 0, D3D11_MAP_WRITE_DISCARD, 0,
-            &mapped)))
-        {
-            memcpy(mapped.pData, &cb, sizeof(cb));
-            m_pDeviceContext->Unmap(m_pShadowLightBuffer, 0);
-        }
+        lightCB.WorldToLightUV[i] = XMMatrixTranspose(m_CascadeData[i].WorldToLightUV);
     }
+
+    lightCB.CascadeSplits = XMFLOAT4(
+        m_CascadeData[0].SplitDepth,
+        m_CascadeData[1].SplitDepth,
+        m_CascadeData[2].SplitDepth,
+        m_CascadeData[3].SplitDepth
+    );
+
+    XMVECTOR lightDirV = XMVector3Normalize(XMLoadFloat3(&m_ShadowLightDirection));
+    XMFLOAT3 lightDir;
+    XMStoreFloat3(&lightDir, lightDirV);
+
+    lightCB.ShadowLightDirStrength = XMFLOAT4(
+        lightDir.x,
+        lightDir.y,
+        lightDir.z,
+        m_ShadowStrength
+    );
+
+    lightCB.CsmRatio = XMFLOAT4(
+        m_CascadeData[0].SplitDepth / m_CascadeData[3].SplitDepth,
+        m_CascadeData[1].SplitDepth / m_CascadeData[3].SplitDepth,
+        m_CascadeData[2].SplitDepth / m_CascadeData[3].SplitDepth,
+        1.0f
+    );
+    XMMATRIX invView = XMMatrixInverse(nullptr, cameraView);
+    XMVECTOR cameraForwardV = XMVector3Normalize(invView.r[2]);
+    XMFLOAT3 cameraForward;
+    XMStoreFloat3(&cameraForward, cameraForwardV);
+    lightCB.CameraForward = XMFLOAT4(
+        cameraForward.x,
+        cameraForward.y,
+        cameraForward.z,
+        0.0f
+    );
+
+    D3D11_MAPPED_SUBRESOURCE mapped = {};
+    if (SUCCEEDED(m_pDeviceContext->Map(m_pShadowLightBuffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped)))
     {
-        CascadedShadowParamsCB cb = {};
-        cb.ShadowBiasTexelSizeBlend = XMFLOAT4(
-            m_ShadowBias,
-            m_ShadowSlopeBias * 0.001f,
-            1.0f / (float)m_ShadowMapSize,
-            m_CascadeBlendBand
-        );
-        D3D11_MAPPED_SUBRESOURCE mapped = {};
-        if (SUCCEEDED(m_pDeviceContext->Map(m_pShadowParamsBuffer, 0, D3D11_MAP_WRITE_DISCARD, 0,
-            &mapped)))
-        {
-            memcpy(mapped.pData, &cb, sizeof(cb));
-            m_pDeviceContext->Unmap(m_pShadowParamsBuffer, 0);
-        }
+        memcpy(mapped.pData, &lightCB, sizeof(lightCB));
+        m_pDeviceContext->Unmap(m_pShadowLightBuffer, 0);
+    }
+
+    CascadedShadowParamsCB paramsCB = {};
+    paramsCB.ShadowBiasTexelSizeBlend = XMFLOAT4(
+        m_ShadowBias,
+        m_ShadowSlopeBias * 0.001f,
+        1.0f / (float)m_ShadowMapSize,
+        m_CascadeBlendBand
+    );
+
+    paramsCB.ShadowOptions = XMFLOAT4(
+        (float)m_ShadowMode,
+        m_TintSplits ? 1.0f : 0.0f,
+        m_GroundHalfSize,
+        0.0f
+    );
+
+    if (SUCCEEDED(m_pDeviceContext->Map(m_pShadowParamsBuffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped)))
+    {
+        memcpy(mapped.pData, &paramsCB, sizeof(paramsCB));
+        m_pDeviceContext->Unmap(m_pShadowParamsBuffer, 0);
     }
 }
 
@@ -3816,7 +3914,6 @@ void RenderClass::RenderCascadedShadowPass()
 
     m_pDeviceContext->RSSetState(nullptr);
 }
-
 
 void RenderClass::RenderGroundPlaneShadow()
 {
@@ -4068,7 +4165,6 @@ void RenderClass::DrawGltfPrimitiveShadow(
     m_pDeviceContext->IASetIndexBuffer(primitive.IndexBuffer, primitive.IndexFormat, 0);
     m_pDeviceContext->DrawIndexed(primitive.IndexCount, 0, 0);
 }
-
 
 // imgui
 

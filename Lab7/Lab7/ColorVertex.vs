@@ -13,9 +13,11 @@ cbuffer CameraBuffer : register(b1)
 
 cbuffer ShadowLightBuffer : register(b4)
 {
-    matrix LightViewProj[4];
+    matrix WorldToLightUV[4];
     float4 CascadeSplits;
     float4 ShadowLightDirStrength;
+    float4 CsmRatio;
+    float4 CameraForward;
 };
 
 struct VS_INPUT
@@ -47,14 +49,14 @@ PS_INPUT main(VS_INPUT input)
 
     float4 worldPos = mul(float4(input.Pos, 1.0f), Model);
     output.WorldPos = worldPos.xyz;
-    output.ShadowPos0 = mul(worldPos, LightViewProj[0]);
-    output.ShadowPos1 = mul(worldPos, LightViewProj[1]);
-    output.ShadowPos2 = mul(worldPos, LightViewProj[2]);
-    output.ShadowPos3 = mul(worldPos, LightViewProj[3]);
+
+    output.ShadowPos0 = mul(worldPos, WorldToLightUV[0]);
+    output.ShadowPos1 = mul(worldPos, WorldToLightUV[1]);
+    output.ShadowPos2 = mul(worldPos, WorldToLightUV[2]);
+    output.ShadowPos3 = mul(worldPos, WorldToLightUV[3]);
 
     float4 viewPos = mul(worldPos, view);
     output.ViewDepth = max(viewPos.z, 0.0f);
-
 
     output.Pos = mul(worldPos, vp);
     output.Normal = normalize(mul(input.Normal, (float3x3)Model));
@@ -63,13 +65,9 @@ PS_INPUT main(VS_INPUT input)
 
     float3 tangent;
     if (abs(input.Normal.z) > 0.999f)
-    {
         tangent = float3(1.0f, 0.0f, 0.0f);
-    }
     else
-    {
         tangent = normalize(cross(input.Normal, float3(0, 0, 1)));
-    }
 
     float3 bitangent = normalize(cross(input.Normal, tangent));
     output.Tangent = mul(tangent, (float3x3)Model);

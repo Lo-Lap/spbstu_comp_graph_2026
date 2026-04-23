@@ -4,10 +4,10 @@ TextureCube irradianceMap : register(t2);
 TextureCube prefilteredEnvMap : register(t3);
 Texture2D brdfLUT : register(t4);
 Texture2D emissiveTexture : register(t5);
+
 Texture2DArray shadowMap : register(t6);
 
 SamplerState samplerState : register(s0);
-SamplerState shadowSampler : register(s1);
 SamplerComparisonState shadowCmpSampler : register(s2);
 
 static const float PI = 3.14159265359f;
@@ -37,16 +37,18 @@ cbuffer MaterialBuffer : register(b3)
 
 cbuffer ShadowParamsBuffer : register(b4)
 {
-    float4 ShadowBiasTexelSizeBlend;
+    float4 ShadowBiasTexelSizeBlend; 
+    float4 ShadowOptions;           
 };
 
 cbuffer ShadowLightBuffer : register(b5)
 {
-    matrix LightViewProj[4];
+    matrix WorldToLightUV[4];
     float4 CascadeSplits;
     float4 ShadowLightDirStrength;
+    float4 CsmRatio;
+    float4 CameraForward;
 };
-
 
 struct PS_INPUT
 {
@@ -63,6 +65,12 @@ struct PS_INPUT
     float4 ShadowPos3 : TEXCOORD9;
     float ViewDepth : TEXCOORD10;
 };
+
+bool IsInside(float2 uv)
+{
+    return uv.x >= 0.0f && uv.x <= 1.0f &&
+           uv.y >= 0.0f && uv.y <= 1.0f;
+}
 
 float3 CalculateNormalFromMap(float3 normal, float3 tangent, float3 bitangent, float2 texCoord, float normalStrength)
 {
@@ -115,68 +123,20 @@ float ComputePointLightFalloff(float distanceToLight, float range)
     return invDist2 * rangeFade * rangeFade;
 };
 
-/*
-float ComputeShadowFactor(float4 shadowPos, float3 N, float3 L)
+float SampleShadow(float4 shadowPos, int splitIdx, float3 N, float3 L)
 {
     float3 projCoords = shadowPos.xyz / max(shadowPos.w, 1e-5f);
-    
-    projCoords.x = projCoords.x * 0.5f + 0.5f;
-    projCoords.y = -projCoords.y * 0.5f + 0.5f;
-    projCoords.z = projCoords.z;
-    
-    if (projCoords.x < 0.0f || projCoords.x > 1.0f ||
-        projCoords.y < 0.0f || projCoords.y > 1.0f ||
-        projCoords.z < 0.0f || projCoords.z > 1.0f)
-    {
+
+    if (!IsInside(projCoords.xy) || projCoords.z < 0.0f || projCoords.z > 1.0f)
         return 1.0f;
-    }
-    float constBias = ShadowBiasAndTexelSize.x;
-    float slopeBias = ShadowBiasAndTexelSize.y;
-    float texel = ShadowBiasAndTexelSize.z;
-    
-    float NdotL = saturate(dot(N, L));
-    float bias = max(constBias, slopeBias * (1.0f - NdotL));
-    
-    float shadow = 0.0f;
-    
-    [unroll]
-    for (int y = -1; y <= 1; ++y)
-    {
-        [unroll]
-        for (int x = -1; x <= 1; ++x)
-        {
-            float2 offset = float2(x, y) * texel;
-            shadow += shadowMap.SampleCmpLevelZero(
-                shadowCmpSampler,
-                projCoords.xy + offset,
-                projCoords.z - bias
-                );
-        }
-    }
-
-    shadow /= 9.0f;
-    return shadow;
-}
-*/
-
-float SampleCascadeShadow(float4 shadowPos, int cascadeIndex, float3 N, float3 L)
-{
-    float3 projCoords = shadowPos.xyz / max(shadowPos.w, 1e-5f);
-    projCoords.x = projCoords.x * 0.5f + 0.5f;
-    projCoords.y = -projCoords.y * 0.5f + 0.5f;
-
-    if (projCoords.x < 0.0f || projCoords.x > 1.0f ||
-        projCoords.y < 0.0f || projCoords.y > 1.0f ||
-        projCoords.z < 0.0f || projCoords.z > 1.0f)
-    {
-        return 1.0f;
-    }
 
     float constBias = ShadowBiasTexelSizeBlend.x;
     float slopeBias = ShadowBiasTexelSizeBlend.y;
     float texel = ShadowBiasTexelSizeBlend.z;
+
     float NdotL = saturate(dot(N, L));
     float bias = max(constBias, slopeBias * (1.0f - NdotL));
+
     float shadow = 0.0f;
 
     [unroll]
@@ -186,15 +146,21 @@ float SampleCascadeShadow(float4 shadowPos, int cascadeIndex, float3 N, float3 L
         for (int x = -1; x <= 1; ++x)
         {
             float2 uv = projCoords.xy + float2(x, y) * texel;
-            float lit = shadowMap.SampleCmpLevelZero(
+            shadow += shadowMap.SampleCmpLevelZero(
                 shadowCmpSampler,
-                float3(uv, cascadeIndex),
+                float3(uv, splitIdx),
                 projCoords.z - bias
             );
-            shadow += lit;
         }
     }
+
     return shadow / 9.0f;
+}
+
+bool IsShadowCoordValid(float4 shadowPos)
+{
+    float3 projCoords = shadowPos.xyz / max(shadowPos.w, 1e-5f);
+    return IsInside(projCoords.xy) && projCoords.z >= 0.0f && projCoords.z <= 1.0f;
 }
 
 int SelectCascade(float viewDepth)
@@ -206,6 +172,95 @@ int SelectCascade(float viewDepth)
     return -1;
 }
 
+float4 GetCascadeShadowPos(PS_INPUT input, int cascade)
+{
+    if (cascade == 0) return input.ShadowPos0;
+    if (cascade == 1) return input.ShadowPos1;
+    if (cascade == 2) return input.ShadowPos2;
+    if (cascade == 3) return input.ShadowPos3;
+    return 0.0f;
+}
+
+float SampleShadowWithCascadeFallback(PS_INPUT input, int cascade, float3 N, float3 L)
+{
+    if (cascade < 0)
+        return 1.0f;
+
+    float4 shadowPos = GetCascadeShadowPos(input, cascade);
+    if (IsShadowCoordValid(shadowPos))
+        return SampleShadow(shadowPos, cascade, N, L);
+
+    [loop]
+    for (int nextCascade = cascade + 1; nextCascade < 4; ++nextCascade)
+    {
+        shadowPos = GetCascadeShadowPos(input, nextCascade);
+        if (IsShadowCoordValid(shadowPos))
+            return SampleShadow(shadowPos, nextCascade, N, L);
+    }
+
+    [loop]
+    for (int prevCascade = cascade - 1; prevCascade >= 0; --prevCascade)
+    {
+        shadowPos = GetCascadeShadowPos(input, prevCascade);
+        if (IsShadowCoordValid(shadowPos))
+            return SampleShadow(shadowPos, prevCascade, N, L);
+    }
+
+    return 1.0f;
+}
+
+float CalculateShadowSimple(PS_INPUT input, float3 N, float3 L)
+{
+    return SampleShadow(input.ShadowPos0, 0, N, L);
+}
+
+float CalculateShadowPSSM(PS_INPUT input, float3 N, float3 L)
+{
+    int cascade = SelectCascade(input.ViewDepth);
+    if (cascade < 0)
+        return 1.0f;
+
+    return SampleShadowWithCascadeFallback(input, cascade, N, L);
+}
+
+float CalculateShadowCSM(PS_INPUT input, float3 N, float3 L)
+{
+    int cascade = SelectCascade(input.ViewDepth);
+    if (cascade < 0)
+        return 1.0f;
+
+    float blendBand = ShadowBiasTexelSizeBlend.w;
+    float shadow = SampleShadowWithCascadeFallback(input, cascade, N, L);
+
+    if (cascade < 3 && blendBand > 1e-5f)
+    {
+        float splitValue =
+            (cascade == 0) ? CascadeSplits.x :
+            (cascade == 1) ? CascadeSplits.y :
+            CascadeSplits.z;
+        float distToSplit = abs(splitValue - input.ViewDepth);
+        if (distToSplit < blendBand)
+        {
+            float nextShadow = SampleShadowWithCascadeFallback(input, cascade + 1, N, L);
+            float t = saturate(distToSplit / blendBand);
+            shadow = lerp(nextShadow, shadow, t);
+        }
+    }
+
+    return shadow;
+}
+
+
+float ComputeReferenceShadowFactor(PS_INPUT input, float3 N, float3 L)
+{
+    int shadowMode = (int)(ShadowOptions.x + 0.5f);
+
+    if (shadowMode == 0) return CalculateShadowSimple(input, N, L);
+    if (shadowMode == 1) return CalculateShadowPSSM(input, N, L);
+    if (shadowMode == 2) return CalculateShadowCSM(input, N, L);
+
+    return 1.0f;
+}
 
 float3 GetCascadeDebugColor(int cascade)
 {
@@ -215,41 +270,19 @@ float3 GetCascadeDebugColor(int cascade)
     return float3(1.0f, 1.0f, 0.15f);
 }
 
-
-float ComputeCascadedShadowFactor(PS_INPUT input, float3 N, float3 L)
+int SelectGroundPlaneDebugSplit(PS_INPUT input)
 {
-    int cascade = SelectCascade(input.ViewDepth);
+    float3 cameraToPoint = input.WorldPos - input.CameraPos;
+    float viewDepth = dot(cameraToPoint, normalize(CameraForward.xyz));
 
-    if (cascade < 0)
-    {
-        return 1.0f;
-    }
+    if (viewDepth < 0.0f)
+        return -1;
 
-    float blendBand = ShadowBiasTexelSizeBlend.w;
-    float4 shadowPos[4] =
-    {
-        input.ShadowPos0,
-        input.ShadowPos1,
-        input.ShadowPos2,
-        input.ShadowPos3
-    };
-
-    float shadow = SampleCascadeShadow(shadowPos[cascade], cascade, N, L);
-    if (cascade < 3)
-    {
-        float splitValue =
-            (cascade == 0) ? CascadeSplits.x :
-            (cascade == 1) ? CascadeSplits.y :
-            CascadeSplits.z;
-        float distToSplit = abs(splitValue - input.ViewDepth);
-        if (distToSplit < blendBand)
-        {
-            float nextShadow = SampleCascadeShadow(shadowPos[cascade + 1], cascade + 1, N, L);
-            float t = saturate(distToSplit / blendBand);
-            shadow = lerp(nextShadow, shadow, t);
-        }
-    }
-    return shadow;
+    if (viewDepth <= CascadeSplits.x) return 0;
+    if (viewDepth <= CascadeSplits.y) return 1;
+    if (viewDepth <= CascadeSplits.z) return 2;
+    if (viewDepth <= CascadeSplits.w) return 3;
+    return -1;
 }
 
 float4 main(PS_INPUT input) : SV_Target
@@ -298,6 +331,8 @@ float4 main(PS_INPUT input) : SV_Target
     float specularIBLIntensity = max(DebugView.w, 0.0f);
     float3 Lo = 0.0f;
 
+    bool receivesShadow = (Extra.y > 0.5f);
+
     [unroll]
     for (int i = 0; i < 3; ++i)
     {
@@ -324,9 +359,9 @@ float4 main(PS_INPUT input) : SV_Target
         float NdotL = saturate(dot(N, L));
         float shadowFactor = 1.0f;
 
-        if (i == 0)
+        if (i == 0 && receivesShadow)
         {
-            shadowFactor = ComputeCascadedShadowFactor(input, N, L);
+            shadowFactor = ComputeReferenceShadowFactor(input, N, L);
         }
 
         float NdotV_local = saturate(dot(N, V));
@@ -402,15 +437,10 @@ float4 main(PS_INPUT input) : SV_Target
     float3 color = ambient + Lo + emissive;
     if (Extra.x > 0.5f)
     {
-        int cascade = SelectCascade(input.ViewDepth);
-        if (cascade >= 0)
+        int split = SelectGroundPlaneDebugSplit(input);
+        if (split >= 0)
         {
-            float3 cascadeColor = GetCascadeDebugColor(cascade);
-            color = lerp(color, cascadeColor, 0.7f);
-        }
-        else
-        {
-            color = lerp(color, float3(0.35f, 0.35f, 0.35f), 0.7f);
+            return float4(GetCascadeDebugColor(split), 1.0f);
         }
     }
 
