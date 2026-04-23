@@ -98,6 +98,7 @@ public:
         m_MaterialColor(1.0f, 1.0f, 1.0f),
         m_EnableTextures(false),
         m_DebugViewMode(DebugView_Final),
+        m_ShowCascadeSplitColors(false),
 
         m_pPrefilteredEnvSRV(nullptr),
         m_pSpecularPrefilterPS(nullptr),
@@ -140,7 +141,7 @@ public:
         m_pShadowSampler(nullptr),
         m_pShadowDepthState(nullptr),
         m_ShadowMapSize(2048),
-        m_ShadowLightDirection(XMFLOAT3(-0.45f, -1.0f, 0.25f)),
+        m_ShadowLightDirection(XMFLOAT3(-0.4f, -1.0f, -0.25f)),
         m_ShadowBias(0.00035f),
         m_ShadowSlopeBias(2.0f),
         m_ShadowStrength(0.95f)
@@ -294,6 +295,7 @@ private:
     {
         XMMATRIX LightViewProj[kShadowCascadeCount];
         XMFLOAT4 CascadeSplits;
+        XMFLOAT4 ShadowLightDirStrength;
     };
     struct CascadedShadowParamsCB
     {
@@ -364,7 +366,8 @@ private:
     HRESULT ConfigureBackBuffer(UINT width, UINT height);
     void RenderSkybox(const XMMATRIX& viewProj);
 
-    void UpdateCameraAndLightBuffers(const XMMATRIX& viewProj);
+    void UpdateCameraAndLightBuffers(const XMMATRIX& view, const XMMATRIX& viewProj);
+
     HRESULT CreateHDRSceneTexture(UINT width, UINT height);
 
     HRESULT CreateTextureSRVFromFile(const std::wstring& path, ID3D11ShaderResourceView** outSRV);
@@ -607,7 +610,11 @@ private:
     float m_CascadeSplits[kShadowCascadeCount] = { 0.05f, 0.15f, 0.35f, 1.0f };
     float m_CascadeLambda = 0.65f;
     float m_CascadeBlendBand = 0.08f;
+    bool m_ShowCascadeSplitColors;
 
+    float m_CameraNearZ = 0.1f;
+    float m_CameraFarZ = 100.0f;
+    float m_ShadowCascadeFarZ = 45.0f;
 
 };
 #endif

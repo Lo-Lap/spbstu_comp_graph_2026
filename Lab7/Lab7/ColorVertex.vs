@@ -6,16 +6,17 @@ cbuffer MatrixBuffer : register(b0)
 cbuffer CameraBuffer : register(b1)
 {
     matrix vp;
-    float3 CameraPos;
     matrix view;
+    float3 CameraPos;
+    float CameraPadding;
 };
 
 cbuffer ShadowLightBuffer : register(b4)
 {
     matrix LightViewProj[4];
     float4 CascadeSplits;
+    float4 ShadowLightDirStrength;
 };
-
 
 struct VS_INPUT
 {
@@ -52,7 +53,8 @@ PS_INPUT main(VS_INPUT input)
     output.ShadowPos3 = mul(worldPos, LightViewProj[3]);
 
     float4 viewPos = mul(worldPos, view);
-    output.ViewDepth = abs(viewPos.z);
+    output.ViewDepth = max(viewPos.z, 0.0f);
+
 
     output.Pos = mul(worldPos, vp);
     output.Normal = normalize(mul(input.Normal, (float3x3)Model));

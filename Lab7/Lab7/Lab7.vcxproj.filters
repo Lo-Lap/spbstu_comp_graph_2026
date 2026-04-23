@@ -192,6 +192,15 @@
     <Image Include="models\columns\Marble1_Normal.png">
       <Filter>models\columns</Filter>
     </Image>
+    <Image Include="textures\rocky_terrain_02_diff_1k.dds">
+      <Filter>textures</Filter>
+    </Image>
+    <Image Include="textures\rocky_terrain_02_disp_1k.dds">
+      <Filter>textures</Filter>
+    </Image>
+    <Image Include="textures\rocky_terrain_02_spec_1k.dds">
+      <Filter>textures</Filter>
+    </Image>
   </ItemGroup>
   <ItemGroup>
     <CopyFileToFolders Include="ColorPixel.ps">

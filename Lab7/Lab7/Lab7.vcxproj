@@ -278,6 +278,9 @@
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">false</ExcludedFromBuild>
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">false</ExcludedFromBuild>
     </CopyFileToFolders>
+    <Image Include="textures\rocky_terrain_02_diff_1k.dds" />
+    <Image Include="textures\rocky_terrain_02_disp_1k.dds" />
+    <Image Include="textures\rocky_terrain_02_spec_1k.dds" />
   </ItemGroup>
   <ItemGroup>
     <CopyFileToFolders Include="ColorPixel.ps">

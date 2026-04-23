@@ -32,6 +32,7 @@ cbuffer MaterialBuffer : register(b3)
     float4 Albedo;
     float4 DebugView;
     float4 Emissive;
+    float4 Extra;
 };
 
 cbuffer ShadowParamsBuffer : register(b4)
@@ -43,6 +44,7 @@ cbuffer ShadowLightBuffer : register(b5)
 {
     matrix LightViewProj[4];
     float4 CascadeSplits;
+    float4 ShadowLightDirStrength;
 };
 
 
@@ -176,21 +178,22 @@ float SampleCascadeShadow(float4 shadowPos, int cascadeIndex, float3 N, float3 L
     float NdotL = saturate(dot(N, L));
     float bias = max(constBias, slopeBias * (1.0f - NdotL));
     float shadow = 0.0f;
+
     [unroll]
     for (int y = -1; y <= 1; ++y)
     {
         [unroll]
         for (int x = -1; x <= 1; ++x)
         {
-            float2 offset = float2(x, y) * texel;
-            shadow += shadowMap.SampleCmpLevelZero(
+            float2 uv = projCoords.xy + float2(x, y) * texel;
+            float lit = shadowMap.SampleCmpLevelZero(
                 shadowCmpSampler,
-                float3(projCoords.xy + offset, cascadeIndex),
+                float3(uv, cascadeIndex),
                 projCoords.z - bias
             );
+            shadow += lit;
         }
     }
-
     return shadow / 9.0f;
 }
 
@@ -199,12 +202,29 @@ int SelectCascade(float viewDepth)
     if (viewDepth < CascadeSplits.x) return 0;
     if (viewDepth < CascadeSplits.y) return 1;
     if (viewDepth < CascadeSplits.z) return 2;
-    return 3;
+    if (viewDepth < CascadeSplits.w) return 3;
+    return -1;
 }
+
+
+float3 GetCascadeDebugColor(int cascade)
+{
+    if (cascade == 0) return float3(1.0f, 0.15f, 0.15f);
+    if (cascade == 1) return float3(0.15f, 1.0f, 0.15f);
+    if (cascade == 2) return float3(0.15f, 0.35f, 1.0f);
+    return float3(1.0f, 1.0f, 0.15f);
+}
+
 
 float ComputeCascadedShadowFactor(PS_INPUT input, float3 N, float3 L)
 {
     int cascade = SelectCascade(input.ViewDepth);
+
+    if (cascade < 0)
+    {
+        return 1.0f;
+    }
+
     float blendBand = ShadowBiasTexelSizeBlend.w;
     float4 shadowPos[4] =
     {
@@ -284,14 +304,26 @@ float4 main(PS_INPUT input) : SV_Target
         if (lights[i].Intensity <= 0.0001f || lights[i].Range <= 0.0001f)
             continue;
         
-        float3 Lvec = lights[i].Position - input.WorldPos;
-        float distanceToLight = length(Lvec);
-        float3 L = Lvec / max(distanceToLight, 1e-4f);
+        float3 L;
+        float distanceToLight = 1.0f;
+        float attenuation = 1.0f;
+        if (i == 0)
+        {
+            L = normalize(-ShadowLightDirStrength.xyz);
+            attenuation = 1.0f;
+        }
+        else
+        {
+            float3 Lvec = lights[i].Position - input.WorldPos;
+            distanceToLight = length(Lvec);
+            L = Lvec / max(distanceToLight, 1e-4f);
+            attenuation = ComputePointLightFalloff(distanceToLight, lights[i].Range);
+        }
+
         float3 H = normalize(V + L);
         float NdotL = saturate(dot(N, L));
-        
         float shadowFactor = 1.0f;
-        
+
         if (i == 0)
         {
             shadowFactor = ComputeCascadedShadowFactor(input, N, L);
@@ -302,7 +334,6 @@ float4 main(PS_INPUT input) : SV_Target
         if (NdotL <= 0.0f || NdotV_local <= 0.0f)
             continue;
 
-        float attenuation = ComputePointLightFalloff(distanceToLight, lights[i].Range);
         float3 radiance = lights[i].Color * lights[i].Intensity * attenuation;
         float NDF = DistributionGGX(N, H, roughness);
         float G = GeometrySmith(N, V, L, roughness);
@@ -315,7 +346,7 @@ float4 main(PS_INPUT input) : SV_Target
         float3 kD = (1.0f - kS) * (1.0f - metallic);
         float3 diffuse = kD * albedo / PI;
         
-        float shadowStrength = ShadowBiasTexelSizeBlend.w;
+        float shadowStrength = saturate(ShadowLightDirStrength.w);
         float visibility = lerp(1.0f - shadowStrength, 1.0f, shadowFactor);
         
         Lo += (diffuse + specular) * radiance * NdotL * visibility;
@@ -369,5 +400,19 @@ float4 main(PS_INPUT input) : SV_Target
     }
 
     float3 color = ambient + Lo + emissive;
+    if (Extra.x > 0.5f)
+    {
+        int cascade = SelectCascade(input.ViewDepth);
+        if (cascade >= 0)
+        {
+            float3 cascadeColor = GetCascadeDebugColor(cascade);
+            color = lerp(color, cascadeColor, 0.7f);
+        }
+        else
+        {
+            color = lerp(color, float3(0.35f, 0.35f, 0.35f), 0.7f);
+        }
+    }
+
     return float4(color, 1.0f);
 }
