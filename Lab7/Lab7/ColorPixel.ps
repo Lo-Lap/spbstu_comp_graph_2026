@@ -121,41 +121,73 @@ float ComputePointLightFalloff(float distanceToLight, float range)
     float invDist2 = 1.0f / max(distanceToLight * distanceToLight, 1e-4f);
     float rangeFade = saturate(1.0f - pow(distanceToLight / max(range, 1e-4f), 4.0f));
     return invDist2 * rangeFade * rangeFade;
-};
+}
+
+float ComputeReceiverBias(float3 N, float3 L)
+{
+    float ndotl = saturate(dot(normalize(N), normalize(L)));
+    
+    float slope = sqrt(saturate(1.0f - ndotl * ndotl)) / max(ndotl, 0.05f);
+    slope = min(slope, 4.0f);
+
+    return ShadowBiasTexelSizeBlend.x + ShadowBiasTexelSizeBlend.y * slope;
+}
 
 float SampleShadow(float4 shadowPos, int splitIdx, float3 N, float3 L)
 {
     float3 projCoords = shadowPos.xyz / max(shadowPos.w, 1e-5f);
-
     if (!IsInside(projCoords.xy) || projCoords.z < 0.0f || projCoords.z > 1.0f)
         return 1.0f;
+    
+    const float texel = ShadowBiasTexelSizeBlend.z;
+    
+    float compareDepth = saturate(projCoords.z - ComputeReceiverBias(N, L));
+    
+    float2 dx = ddx(projCoords.xy);
+    float2 dy = ddy(projCoords.xy);
+    float footprintTexels = max(length(dx), length(dy)) / max(texel, 1e-7f);
+    
+    float minRadius = ShadowOptions.z;
+    float maxRadius = ShadowOptions.w;
+    float radiusTexels = clamp(footprintTexels * 1.25f, minRadius, maxRadius);
+    
+    static const float2 poisson16[16] =
+    {
+        float2(-0.94201624f, -0.39906216f),
+        float2( 0.94558609f, -0.76890725f),
+        float2(-0.09418410f, -0.92938870f),
+        float2( 0.34495938f, 0.29387760f),
+        float2(-0.91588581f, 0.45771432f),
+        float2(-0.81544232f, -0.87912464f),
+        float2(-0.38277543f, 0.27676845f),
+        float2( 0.97484398f, 0.75648379f),
+        float2( 0.44323325f, -0.97511554f),
+        float2( 0.53742981f, -0.47373420f),
+        float2(-0.26496911f, -0.41893023f),
+        float2( 0.79197514f, 0.19090188f),
+        float2(-0.24188840f, 0.99706507f),
+        float2(-0.81409955f, 0.91437590f),
+        float2( 0.19984126f, 0.78641367f),
+        float2( 0.14383161f, -0.14100790f)
+    };
 
-    float constBias = ShadowBiasTexelSizeBlend.x;
-    float slopeBias = ShadowBiasTexelSizeBlend.y;
-    float texel = ShadowBiasTexelSizeBlend.z;
-
-    float NdotL = saturate(dot(N, L));
-    float bias = max(constBias, slopeBias * (1.0f - NdotL));
-
-    float shadow = 0.0f;
+    float visibility = 0.0f;
 
     [unroll]
-    for (int y = -1; y <= 1; ++y)
+    for (int i = 0; i < 16; ++i)
     {
-        [unroll]
-        for (int x = -1; x <= 1; ++x)
-        {
-            float2 uv = projCoords.xy + float2(x, y) * texel;
-            shadow += shadowMap.SampleCmpLevelZero(
-                shadowCmpSampler,
-                float3(uv, splitIdx),
-                projCoords.z - bias
+        float2 uv = projCoords.xy + poisson16[i] * radiusTexels * texel;
+        visibility += shadowMap.SampleCmpLevelZero(
+            shadowCmpSampler,
+            float3(uv, splitIdx),
+            compareDepth
             );
-        }
     }
 
-    return shadow / 9.0f;
+    return visibility / 16.0f;
 }
+
+
 
 bool IsShadowCoordValid(float4 shadowPos)
 {
@@ -223,30 +255,43 @@ float CalculateShadowPSSM(PS_INPUT input, float3 N, float3 L)
     return SampleShadowWithCascadeFallback(input, cascade, N, L);
 }
 
+int SelectCascadeCSMByCoverage(PS_INPUT input)
+{
+    [unroll]
+    for (int cascade = 0; cascade < 4; ++cascade)
+    {
+        if (IsShadowCoordValid(GetCascadeShadowPos(input, cascade)))
+            return cascade;
+    }
+    return -1;
+}
+
 float CalculateShadowCSM(PS_INPUT input, float3 N, float3 L)
 {
-    int cascade = SelectCascade(input.ViewDepth);
+    int cascade = SelectCascadeCSMByCoverage(input);
     if (cascade < 0)
         return 1.0f;
-
-    float blendBand = ShadowBiasTexelSizeBlend.w;
     float shadow = SampleShadowWithCascadeFallback(input, cascade, N, L);
-
-    if (cascade < 3 && blendBand > 1e-5f)
+    
+    if (cascade < 3)
     {
-        float splitValue =
-            (cascade == 0) ? CascadeSplits.x :
-            (cascade == 1) ? CascadeSplits.y :
-            CascadeSplits.z;
-        float distToSplit = abs(splitValue - input.ViewDepth);
-        if (distToSplit < blendBand)
+        float4 shadowPos = GetCascadeShadowPos(input, cascade);
+        float3 projCoords = shadowPos.xyz / max(shadowPos.w, 1e-5f);
+        
+        float edgeDist = min(
+            min(projCoords.x, 1.0f - projCoords.x),
+            min(projCoords.y, 1.0f - projCoords.y)
+            );
+        
+        float blendBandUv = ShadowBiasTexelSizeBlend.w;
+
+        if (edgeDist < blendBandUv)
         {
             float nextShadow = SampleShadowWithCascadeFallback(input, cascade + 1, N, L);
-            float t = saturate(distToSplit / blendBand);
+            float t = saturate(edgeDist / max(blendBandUv, 1e-6f));
             shadow = lerp(nextShadow, shadow, t);
         }
     }
-
     return shadow;
 }
 

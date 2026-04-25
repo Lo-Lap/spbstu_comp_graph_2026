@@ -332,10 +332,10 @@
     <CopyFileToFolders Include="textures\rocky_terrain_02_diff_1k.dds">
       <Filter>textures</Filter>
     </CopyFileToFolders>
-    <CopyFileToFolders Include="textures\rocky_terrain_02_disp_1k.dds">
-      <Filter>textures</Filter>
+    <CopyFileToFolders Include="ShadowPixel.ps">
+      <Filter>shader</Filter>
     </CopyFileToFolders>
-    <CopyFileToFolders Include="textures\rocky_terrain_02_spec_1k.dds">
+    <CopyFileToFolders Include="textures\trava_s_kameshkami.dds">
       <Filter>textures</Filter>
     </CopyFileToFolders>
   </ItemGroup>

@@ -32,6 +32,10 @@ struct GltfMaterial
     int MetallicRoughnessTexture = -1;
     int NormalTexture = -1;
     int EmissiveTexture = -1;
+
+    bool AlphaMask = false;
+    float AlphaCutoff = 0.5f;
+    bool DoubleSided = false;
 };
 
 struct GltfPrimitiveData
@@ -55,16 +59,6 @@ struct GltfNodeData
     DirectX::XMFLOAT4X4 WorldMatrix{};
     std::vector<int> Children;
 };
-
-//struct LoadedGltfScene
-//{
-//    std::vector<GltfMeshData> Meshes;
-//    std::vector<GltfMaterial> Materials;
-//    std::vector<GltfTextureInfo> Textures;
-//    std::vector<GltfNodeData> Nodes;
-//
-//    int SceneRoot = -1;
-//};
 
 struct LoadedGltfScene
 {

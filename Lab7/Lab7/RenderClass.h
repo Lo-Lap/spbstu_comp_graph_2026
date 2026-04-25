@@ -122,9 +122,11 @@ public:
         m_pBloomBlurPS(nullptr),
         m_pBloomCB(nullptr),
         m_EnableBloom(true),
-        m_BloomThreshold(1.25f),
-        m_BloomIntensity(1.0f),
-        m_BloomBlurScale(1.0f),
+        m_BloomThreshold(3.5f),
+        m_BloomIntensity(0.0f),
+        m_BloomBlurScale(0.85f),
+        m_EnableFXAA(true),
+        m_FXAAStrength(1.35f),
 
         m_pGroundVB(nullptr),
         m_pGroundIB(nullptr),
@@ -134,17 +136,18 @@ public:
         m_pShadowMapTexture(nullptr),
         m_pShadowMapSRV(nullptr),
         m_pShadowVertexShader(nullptr),
+        m_pShadowPixelShader(nullptr),
         m_pShadowCameraBuffer(nullptr),
+        m_pShadowMaterialBuffer(nullptr),
         m_pShadowParamsBuffer(nullptr),
         m_pShadowLightBuffer(nullptr),
         m_pShadowRasterState(nullptr),
         m_pShadowSampler(nullptr),
         m_pShadowDepthState(nullptr),
-        //m_ShadowMapSize(2048),
         m_ShadowMapSize(4096),
-        m_ShadowLightDirection(XMFLOAT3(-0.4f, -1.0f, -0.25f)),
-        m_ShadowBias(0.00035f),
-        m_ShadowSlopeBias(2.0f),
+        m_ShadowLightDirection(XMFLOAT3(-0.10f, -1.0f, 0.55f)),
+        m_ShadowBias(0.0012f),
+        m_ShadowSlopeBias(6.0f),
         m_ShadowStrength(0.95f)
 
     {
@@ -235,7 +238,6 @@ private:
         XMFLOAT3 LocalBoundsMax = XMFLOAT3(0, 0, 0);
     };
 
-
     struct GltfModelResource
     {
         std::wstring FilePath;
@@ -285,6 +287,11 @@ private:
         XMMATRIX LightViewProj;
         XMFLOAT3 LightDirection;
         float ShadowStrength;
+    };
+
+    struct ShadowMaterialCB
+    {
+        XMFLOAT4 AlphaParams;
     };
 
     static constexpr UINT kShadowCascadeCount = 4;
@@ -350,8 +357,10 @@ private:
         const XMMATRIX& instanceWorld
     );
     void DrawGltfPrimitiveShadow(
+        const GltfModelResource& model,
         const GltfGpuPrimitive& primitive,
         const XMMATRIX& world
+
     );
     void UpdateCascadedShadowData(const XMMATRIX& cameraView, const XMMATRIX& cameraProj);
 
@@ -426,7 +435,7 @@ private:
 
 private:
     //float m_LightBrightness[3] = { 1.0f, 0.9f, 0.9f };
-    float m_LightBrightness[3] = { 1.4f, 0.0f, 0.0f };
+    float m_LightBrightness[3] = { 0.9f, 0.0f, 0.0f };
 
     XMFLOAT3 m_LightColors[3] =
     {
@@ -444,7 +453,7 @@ private:
 
     XMFLOAT3 m_LightPositions[3] =
     {
-     XMFLOAT3(5.5f, 20.0f, 0.0f),
+     XMFLOAT3(0.5f, 20.0f, 0.0f),
      XMFLOAT3(-6.5f, 10.0f, 2.0f),
      XMFLOAT3(5.5f, 5.0f, 0.0f)
     };
@@ -550,8 +559,8 @@ private:
 
     bool m_EnableTextures;
     bool m_EnableSpecularIBL = true;
-    float m_DiffuseIBLIntensity = 1.0f;
-    float m_SpecularIBLIntensity = 1.0f;
+    float m_DiffuseIBLIntensity = 0.18f;
+    float m_SpecularIBLIntensity = 0.30f;
 
     enum DebugViewMode
     {
@@ -597,13 +606,13 @@ private:
     float m_BloomIntensity;
     float m_BloomBlurScale;
 
+    bool m_EnableFXAA;
+    float m_FXAAStrength;
 
     ID3D11Buffer* m_pGroundVB;
     ID3D11Buffer* m_pGroundIB;
     UINT m_GroundIndexCount;
     float m_GroundHalfSize = 100.0f;
-
-    
 
     std::vector<GltfModelResource> m_ModelResources;
     std::vector<SceneModelInstance> m_SceneModelInstances;
@@ -616,7 +625,11 @@ private:
     ID3D11ShaderResourceView* m_pShadowMapSRV;
 
     ID3D11VertexShader* m_pShadowVertexShader;
+    ID3D11PixelShader* m_pShadowPixelShader;
+
     ID3D11Buffer* m_pShadowCameraBuffer;
+    ID3D11Buffer* m_pShadowMaterialBuffer;
+
     ID3D11Buffer* m_pShadowParamsBuffer;
     ID3D11Buffer* m_pShadowLightBuffer;
 
@@ -629,14 +642,24 @@ private:
     float m_ShadowSlopeBias;
     float m_ShadowStrength;
 
+    int m_ShadowDepthBias = 4096;
+    float m_ShadowSlopeScaledDepthBias = 6.0f;
+    float m_ShadowDepthBiasClamp = 0.001f;
+
+    float m_ShadowReceiverConstBias = 0.00035f;
+    float m_ShadowReceiverSlopeBias = 0.0015f;
+
+    float m_ShadowPcfMinRadius = 1.25f;
+    float m_ShadowPcfMaxRadius = 5.0f;
+
     CascadeData m_CascadeData[kShadowCascadeCount];
     float m_CascadeSplits[kShadowCascadeCount] = { 0.05f, 0.15f, 0.35f, 1.0f };
+    float m_CascadeWorldHalfSize[kShadowCascadeCount] = { 12.0f, 28.0f, 60.0f, 120.0f };
 
     float m_CascadeLambda = 0.65f;
     float m_CascadeBlendBand = 0.08f;
 
-    //UINT m_ShadowMapSize = 4096;
-    ShadowMode m_ShadowMode = ShadowModePSSM;
+    ShadowMode m_ShadowMode = ShadowModeCSM;
 
     bool  m_TintSplits = false;
 

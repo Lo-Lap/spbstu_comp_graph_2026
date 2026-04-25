@@ -202,6 +202,10 @@ static void LoadMaterials(
         if (srcMat.additionalValues.count("emissiveTexture"))
             dstMat.EmissiveTexture = srcMat.additionalValues.at("emissiveTexture").TextureIndex();
 
+        dstMat.AlphaMask = (srcMat.alphaMode == "MASK");
+        dstMat.AlphaCutoff = (float)srcMat.alphaCutoff;
+        dstMat.DoubleSided = srcMat.doubleSided;
+
         outScene.Materials.push_back(dstMat);
     }
 }

@@ -26,29 +26,115 @@ float3 Uncharted2Tonemap(float3 x)
     static const float E = 0.02f;
     static const float F = 0.30f;
     return ((x * (A * x + C * B) + D * E) / (x * (A * x + B) + D * F)) - E / F;
-
 }
 
 float GetExposure()
 {
-    // float avgLum = clamp(Params.x, lumMin, lumMax);
     float avgLog = Params.x;
-    float avgLum = exp(avgLog) - 1.0; 
+    float avgLum = exp(avgLog) - 1.0f;
     avgLum = clamp(avgLum, lumMin, lumMax);
+
     float keyValue = 1.03f - 2.0f / (2.0f + log10(avgLum + 1.0f));
     return keyValue / avgLum;
 }
 
-float4 main(PS_INPUT input) : SV_Target
+float3 ToneMapColor(float3 color)
 {
-    float3 hdr = hdrTexture.Sample(linearSampler, input.TexCoord).rgb;
-    float bloomEnabled = step(0.5f, Params.z);
-    float3 bloom = bloomTexture.Sample(linearSampler, input.TexCoord).rgb * Params.y * bloomEnabled;
-    float3 color = hdr + bloom;
     float exposure = GetExposure();
     float3 toneMapped = Uncharted2Tonemap(color * exposure);
     float3 whiteScale = 1.0f / Uncharted2Tonemap(float3(WhiteLumen, WhiteLumen, WhiteLumen));
+    return saturate(toneMapped * whiteScale);
+}
 
-    float3 ldr = saturate(toneMapped * whiteScale);
+float3 ReadSceneLdr(float2 uv)
+{
+    uv = saturate(uv);
+
+    float3 hdr = hdrTexture.Sample(linearSampler, uv).rgb;
+
+    float bloomEnabled = step(0.5f, Params.z);
+    float3 bloom = bloomTexture.Sample(linearSampler, uv).rgb * Params.y * bloomEnabled;
+
+    return ToneMapColor(hdr + bloom);
+}
+
+float Luma(float3 color)
+{
+    return dot(color, float3(0.299f, 0.587f, 0.114f));
+}
+
+float3 ApplyFXAA(float2 uv, float strength)
+{
+    uint width;
+    uint height;
+    hdrTexture.GetDimensions(width, height);
+
+    float2 invResolution = 1.0f / float2(max((float)width, 1.0f), max((float)height, 1.0f));
+
+    float3 rgbNW = ReadSceneLdr(uv + invResolution * float2(-1.0f, -1.0f));
+    float3 rgbNE = ReadSceneLdr(uv + invResolution * float2( 1.0f, -1.0f));
+    float3 rgbSW = ReadSceneLdr(uv + invResolution * float2(-1.0f,  1.0f));
+    float3 rgbSE = ReadSceneLdr(uv + invResolution * float2( 1.0f,  1.0f));
+    float3 rgbM  = ReadSceneLdr(uv);
+
+    float lumaNW = Luma(rgbNW);
+    float lumaNE = Luma(rgbNE);
+    float lumaSW = Luma(rgbSW);
+    float lumaSE = Luma(rgbSE);
+    float lumaM  = Luma(rgbM);
+
+    float lumaMin = min(lumaM, min(min(lumaNW, lumaNE), min(lumaSW, lumaSE)));
+    float lumaMax = max(lumaM, max(max(lumaNW, lumaNE), max(lumaSW, lumaSE)));
+
+    float aggressive = saturate((strength - 1.0f) * 1.5f);
+
+    float edgeThresholdMin = lerp(0.0312f, 0.0156f, aggressive);
+    float edgeThreshold    = lerp(0.1250f, 0.0625f, aggressive);
+
+    float contrast = lumaMax - lumaMin;
+    if (contrast < max(edgeThresholdMin, lumaMax * edgeThreshold))
+        return rgbM;
+
+    float2 dir;
+    dir.x = -((lumaNW + lumaNE) - (lumaSW + lumaSE));
+    dir.y =  ((lumaNW + lumaSW) - (lumaNE + lumaSE));
+
+    float reduceMin = lerp(1.0f / 128.0f, 1.0f / 192.0f, aggressive);
+    float reduceMul = lerp(1.0f /   8.0f, 1.0f /  16.0f, aggressive);
+    float spanMax   = lerp(8.0f, 12.0f, aggressive);
+
+    float dirReduce = max(
+        (lumaNW + lumaNE + lumaSW + lumaSE) * (0.25f * reduceMul),
+        reduceMin
+    );
+
+    float rcpDirMin = 1.0f / (min(abs(dir.x), abs(dir.y)) + dirReduce);
+
+    dir = clamp(dir * rcpDirMin, -spanMax, spanMax) * invResolution;
+
+    float3 rgbA = 0.5f * (
+        ReadSceneLdr(uv + dir * (1.0f / 3.0f - 0.5f)) +
+        ReadSceneLdr(uv + dir * (2.0f / 3.0f - 0.5f))
+    );
+
+    float3 rgbB = rgbA * 0.5f + 0.25f * (
+        ReadSceneLdr(uv + dir * -0.5f) +
+        ReadSceneLdr(uv + dir *  0.5f)
+    );
+
+    float lumaB = Luma(rgbB);
+
+    float3 fxaa = (lumaB < lumaMin || lumaB > lumaMax) ? rgbA : rgbB;
+
+    return lerp(rgbM, fxaa, saturate(strength));
+}
+
+float4 main(PS_INPUT input) : SV_Target
+{
+    float fxaaStrength = Params.w;
+    float3 ldr = (fxaaStrength > 0.001f)
+        ? ApplyFXAA(input.TexCoord, fxaaStrength)
+        : ReadSceneLdr(input.TexCoord);
+
     return float4(ldr, 1.0f);
 }
