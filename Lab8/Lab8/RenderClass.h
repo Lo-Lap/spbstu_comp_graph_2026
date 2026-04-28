@@ -49,6 +49,13 @@ public:
         m_pSSAOTexture(nullptr),
         m_pSSAORTV(nullptr),
         m_pSSAOSRV(nullptr),
+        m_pSSAOPS(nullptr),
+        m_pSSAOCB(nullptr),
+        m_SSAOSampleCount(32),
+        m_SSAORadius(1.25f),
+        m_SSAOBias(0.025f),
+        m_SSAOStrength(1.2f),
+        m_SSAOMaxDepthDiff(4.0f),
         m_pNormalPrepassVS(nullptr),
         m_pNormalPrepassPS(nullptr),
         m_pColorBuffer(nullptr),
@@ -348,10 +355,13 @@ private:
     void ReleaseGroundPlane();
     void RenderGroundPlane(const XMMATRIX& viewProj);
 
-    //SSAO stage 1: screen resources and depth/normal prepass
+    // ssao
     HRESULT CreateSSAOResources(UINT width, UINT height);
     void ReleaseSSAOResources();
     void RenderDepthNormalPrepass(const XMMATRIX& viewProj);
+    void GenerateSSAOKernel();
+    void RenderSSAO(const XMMATRIX& cameraView, const XMMATRIX& cameraProj);
+
     void RenderGroundPlaneDepthNormal();
     void RenderAllSceneModelsDepthNormal();
     void RenderModelInstanceDepthNormal(const SceneModelInstance& instance);
@@ -519,6 +529,15 @@ private:
     ID3D11Texture2D* m_pSSAOTexture;
     ID3D11RenderTargetView* m_pSSAORTV;
     ID3D11ShaderResourceView* m_pSSAOSRV;
+
+    ID3D11PixelShader* m_pSSAOPS;
+    ID3D11Buffer* m_pSSAOCB;
+    XMFLOAT4 m_SSAOSamples[64];
+    UINT m_SSAOSampleCount;
+    float m_SSAORadius;
+    float m_SSAOBias;
+    float m_SSAOStrength;
+    float m_SSAOMaxDepthDiff;
 
     ID3D11VertexShader* m_pNormalPrepassVS;
     ID3D11PixelShader* m_pNormalPrepassPS;

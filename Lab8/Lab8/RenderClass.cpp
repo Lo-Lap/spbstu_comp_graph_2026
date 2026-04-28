@@ -3,6 +3,7 @@
 #include "DDSTextureLoader11.h"
 
 #include <filesystem>
+#include <random>
 
 #include <dxgi.h>
 #include <d3d11.h>
@@ -83,6 +84,18 @@ struct BloomParamsCB
 struct SpecularPrefilterCB
 {
     XMFLOAT4 Params;
+};
+
+static constexpr UINT SSAO_MAX_SAMPLE_COUNT = 64;
+
+struct SSAOParamsCB
+{
+    XMMATRIX Proj;
+    XMMATRIX InvProj;
+    XMMATRIX View;
+    XMFLOAT4 Params0;
+    XMFLOAT4 Params1;
+    XMFLOAT4 Samples[SSAO_MAX_SAMPLE_COUNT];
 };
 
 static XMMATRIX BuildViewMatrix(
@@ -324,6 +337,9 @@ HRESULT RenderClass::InitBufferShader()
         result = CompileShader(L"NormalPrepass.ps", nullptr, &m_pNormalPrepassPS);
 
     if (SUCCEEDED(result))
+        result = CompileShader(L"SSAO.ps", nullptr, &m_pSSAOPS);
+
+    if (SUCCEEDED(result))
         result = CompileShader(L"ShadowVertex.vs", &m_pShadowVertexShader, nullptr);
 
     if (SUCCEEDED(result))
@@ -366,7 +382,6 @@ HRESULT RenderClass::InitBufferShader()
 
     D3D11_RASTERIZER_DESC shadowRsDesc = {};
     shadowRsDesc.FillMode = D3D11_FILL_SOLID;
-    //shadowRsDesc.CullMode = D3D11_CULL_FRONT;
     shadowRsDesc.CullMode = D3D11_CULL_BACK;
 
     shadowRsDesc.FrontCounterClockwise = FALSE;
@@ -444,6 +459,17 @@ HRESULT RenderClass::InitBufferShader()
     bloomCBDesc.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
     bloomCBDesc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
     result = m_pDevice->CreateBuffer(&bloomCBDesc, nullptr, &m_pBloomCB);
+    if (FAILED(result))
+        return result;
+
+    GenerateSSAOKernel();
+
+    D3D11_BUFFER_DESC ssaoCBDesc = {};
+    ssaoCBDesc.Usage = D3D11_USAGE_DYNAMIC;
+    ssaoCBDesc.ByteWidth = sizeof(SSAOParamsCB);
+    ssaoCBDesc.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
+    ssaoCBDesc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
+    result = m_pDevice->CreateBuffer(&ssaoCBDesc, nullptr, &m_pSSAOCB);
     if (FAILED(result))
         return result;
 
@@ -1167,6 +1193,18 @@ void RenderClass::TerminateBufferShader()
         m_pNormalPrepassPS = nullptr;
     }
 
+    if (m_pSSAOPS)
+    {
+        m_pSSAOPS->Release();
+        m_pSSAOPS = nullptr;
+    }
+
+    if (m_pSSAOCB)
+    {
+        m_pSSAOCB->Release();
+        m_pSSAOCB = nullptr;
+    }
+
     if (m_pLightPixelShader)
     {
         m_pLightPixelShader->Release();
@@ -1878,6 +1916,7 @@ void RenderClass::Render()
     UpdateCameraAndLightBuffers(cameraView, viewProj);
 
     RenderDepthNormalPrepass(viewProj);
+    RenderSSAO(cameraView, cameraProj);
 
     sceneRTV = (m_DebugViewMode == DebugView_Final) ? m_pHDRSceneRTV : m_pRenderTargetView;
     m_pDeviceContext->OMSetRenderTargets(1, &sceneRTV, m_pDepthView);
@@ -2184,7 +2223,6 @@ HRESULT RenderClass::CreateHDRSceneTexture(UINT width, UINT height)
     texDesc.MipLevels = 1;
     texDesc.ArraySize = 1;
     texDesc.Format = DXGI_FORMAT_R16G16B16A16_FLOAT;
-    //texDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;
     texDesc.SampleDesc.Count = 1;
     texDesc.Usage = D3D11_USAGE_DEFAULT;
     texDesc.BindFlags = D3D11_BIND_RENDER_TARGET | D3D11_BIND_SHADER_RESOURCE;
@@ -2323,6 +2361,119 @@ void RenderClass::RenderGroundPlane(const XMMATRIX& viewProj)
     m_pDeviceContext->DrawIndexed(m_GroundIndexCount, 0, 0);
 }
 
+
+void RenderClass::GenerateSSAOKernel()
+{
+    std::mt19937 rng(1337u);
+    std::uniform_real_distribution<float> distMinusOneToOne(-1.0f, 1.0f);
+    std::uniform_real_distribution<float> distZeroToOne(0.0f, 1.0f);
+
+    for (UINT i = 0; i < SSAO_MAX_SAMPLE_COUNT; ++i)
+    {
+        XMVECTOR sample = XMVectorSet(
+            distMinusOneToOne(rng),
+            distMinusOneToOne(rng),
+            distZeroToOne(rng),
+            0.0f
+        );
+
+        const float lenSq = XMVectorGetX(XMVector3LengthSq(sample));
+        if (lenSq < 1e-6f)
+        {
+            sample = XMVectorSet(0.0f, 0.0f, 1.0f, 0.0f);
+        }
+        else
+        {
+            sample = XMVector3Normalize(sample);
+        }
+
+        sample = XMVectorScale(sample, distZeroToOne(rng));
+
+        float scale = static_cast<float>(i) / static_cast<float>(SSAO_MAX_SAMPLE_COUNT);
+        scale = 0.1f + 0.9f * scale * scale;
+        sample = XMVectorScale(sample, scale);
+
+        XMStoreFloat4(&m_SSAOSamples[i], sample);
+    }
+}
+
+void RenderClass::RenderSSAO(const XMMATRIX& cameraView, const XMMATRIX& cameraProj)
+{
+    if (!m_pSSAORTV || !m_pDepthSRV || !m_pNormalSRV || !m_pSSAOPS || !m_pSSAOCB ||
+        !m_pFullScreenVS || !m_pFullScreenQuadVB || !m_pFullScreenLayout)
+    {
+        return;
+    }
+
+    RECT rc;
+    GetClientRect(FindWindow(m_szWindowClass, m_szTitle), &rc);
+    const UINT width = static_cast<UINT>(std::max<LONG>(1, rc.right - rc.left));
+    const UINT height = static_cast<UINT>(std::max<LONG>(1, rc.bottom - rc.top));
+
+    ID3D11ShaderResourceView* nullSRVs[8] = {};
+    m_pDeviceContext->PSSetShaderResources(0, 8, nullSRVs);
+    m_pDeviceContext->OMSetRenderTargets(1, &m_pSSAORTV, nullptr);
+
+    float clearSSAO[4] = { 1.0f, 1.0f, 1.0f, 1.0f };
+    m_pDeviceContext->ClearRenderTargetView(m_pSSAORTV, clearSSAO);
+
+    D3D11_VIEWPORT vp = {};
+    vp.Width = static_cast<FLOAT>(width);
+    vp.Height = static_cast<FLOAT>(height);
+    vp.MinDepth = 0.0f;
+    vp.MaxDepth = 1.0f;
+    vp.TopLeftX = 0.0f;
+    vp.TopLeftY = 0.0f;
+    m_pDeviceContext->RSSetViewports(1, &vp);
+
+    D3D11_MAPPED_SUBRESOURCE mapped = {};
+    if (SUCCEEDED(m_pDeviceContext->Map(m_pSSAOCB, 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped)))
+    {
+        SSAOParamsCB* cb = reinterpret_cast<SSAOParamsCB*>(mapped.pData);
+        cb->Proj = XMMatrixTranspose(cameraProj);
+        cb->InvProj = XMMatrixTranspose(XMMatrixInverse(nullptr, cameraProj));
+        cb->View = XMMatrixTranspose(cameraView);
+        cb->Params0 = XMFLOAT4(
+            m_SSAORadius,
+            m_SSAOBias,
+            m_SSAOStrength,
+            m_SSAOMaxDepthDiff
+        );
+        cb->Params1 = XMFLOAT4(
+            static_cast<float>(std::min<UINT>(m_SSAOSampleCount, SSAO_MAX_SAMPLE_COUNT)),
+            static_cast<float>(width),
+            static_cast<float>(height),
+            0.0f
+        );
+
+        for (UINT i = 0; i < SSAO_MAX_SAMPLE_COUNT; ++i)
+        {
+            cb->Samples[i] = m_SSAOSamples[i];
+        }
+
+        m_pDeviceContext->Unmap(m_pSSAOCB, 0);
+    }
+
+    UINT stride = sizeof(FullScreenVertex);
+    UINT offset = 0;
+    m_pDeviceContext->IASetVertexBuffers(0, 1, &m_pFullScreenQuadVB, &stride, &offset);
+    m_pDeviceContext->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLESTRIP);
+    m_pDeviceContext->IASetInputLayout(m_pFullScreenLayout);
+    m_pDeviceContext->VSSetShader(m_pFullScreenVS, nullptr, 0);
+    m_pDeviceContext->PSSetShader(m_pSSAOPS, nullptr, 0);
+
+    ID3D11ShaderResourceView* srvs[2] = { m_pDepthSRV, m_pNormalSRV };
+    m_pDeviceContext->PSSetShaderResources(0, 2, srvs);
+    m_pDeviceContext->PSSetConstantBuffers(0, 1, &m_pSSAOCB);
+
+    m_pDeviceContext->Draw(4, 0);
+
+    ID3D11ShaderResourceView* nullPair[2] = {};
+    m_pDeviceContext->PSSetShaderResources(0, 2, nullPair);
+    ID3D11Buffer* nullCB = nullptr;
+    m_pDeviceContext->PSSetConstantBuffers(0, 1, &nullCB);
+    m_pDeviceContext->OMSetRenderTargets(0, nullptr, nullptr);
+}
 
 void RenderClass::RenderDepthNormalPrepass(const XMMATRIX& viewProj)
 {
@@ -4336,7 +4487,6 @@ void RenderClass::RenderCascadedShadowPass()
             1.0f,
             0
         );
-        //RenderGroundPlaneShadow();
         RenderAllSceneModelsShadow();
     }
 

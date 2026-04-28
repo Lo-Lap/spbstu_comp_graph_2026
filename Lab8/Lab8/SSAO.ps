@@ -1,0 +1,103 @@
+Texture2D<float> DepthTexture : register(t0);
+Texture2D<float4> NormalTexture : register(t1);
+
+static const int SSAO_MAX_SAMPLE_COUNT = 64;
+
+cbuffer SSAOBuffer : register(b0)
+{
+    matrix Proj;
+    matrix InvProj;
+    matrix View;
+    float4 Params0; // radius, bias, strength, maxDepthDiff
+    float4 Params1; // sampleCount, screenWidth, screenHeight, reserved
+    float4 Samples[SSAO_MAX_SAMPLE_COUNT];
+};
+
+struct PS_INPUT
+{
+    float4 Pos : SV_POSITION;
+    float2 TexCoord : TEXCOORD;
+};
+
+float3 ReconstructViewPosition(float2 uv, float depth)
+{
+    float2 ndcXY = float2(uv.x * 2.0f - 1.0f, 1.0f - uv.y * 2.0f);
+    float4 homoViewPos = mul(float4(ndcXY, depth, 1.0f), InvProj);
+    return homoViewPos.xyz / max(abs(homoViewPos.w), 1e-5f);
+}
+
+float4 main(PS_INPUT input) : SV_TARGET
+{
+    float2 screenSize = max(Params1.yz, float2(1.0f, 1.0f));
+    int2 pixel = int2(input.Pos.xy);
+    pixel = clamp(pixel, int2(0, 0), int2(screenSize) - int2(1, 1));
+
+    float depth = DepthTexture.Load(int3(pixel, 0));
+    if (depth >= 0.999999f)
+    {
+        return float4(1.0f, 1.0f, 1.0f, 1.0f);
+    }
+
+    float radius = max(Params0.x, 1e-4f);
+    float bias = max(Params0.y, 0.0f);
+    float strength = max(Params0.z, 0.0f);
+    float maxDepthDiff = max(Params0.w, 1e-4f);
+
+    int sampleCount = (int)(Params1.x + 0.5f);
+    sampleCount = min(max(sampleCount, 1), SSAO_MAX_SAMPLE_COUNT);
+
+    float2 uv = input.TexCoord;
+    float3 viewPos = ReconstructViewPosition(uv, depth);
+
+    float3 normalWorld = NormalTexture.Load(int3(pixel, 0)).xyz * 2.0f - 1.0f;
+    normalWorld = normalize(normalWorld);
+    float3 normalView = normalize(mul(float4(normalWorld, 0.0f), View).xyz);
+
+    float3 rvec = (abs(normalView.x) > 0.5f) ? float3(0.0f, 1.0f, 0.0f) : float3(1.0f, 0.0f, 0.0f);
+    float3 tangent = normalize(rvec - normalView * dot(rvec, normalView));
+    float3 bitangent = cross(normalView, tangent);
+
+    float occlusion = 0.0f;
+
+    [loop]
+    for (int i = 0; i < sampleCount; ++i)
+    {
+        float3 kernelSample = Samples[i].xyz;
+        float3 sampleVector =
+            kernelSample.x * tangent +
+            kernelSample.y * bitangent +
+            kernelSample.z * normalView;
+
+        float3 samplePos = viewPos + sampleVector * radius;
+
+        float4 projected = mul(float4(samplePos, 1.0f), Proj);
+        float3 ndc = projected.xyz / max(abs(projected.w), 1e-5f);
+        float2 sampleUV = float2(ndc.x * 0.5f + 0.5f, 0.5f - ndc.y * 0.5f);
+
+        if (sampleUV.x < 0.0f || sampleUV.x > 1.0f || sampleUV.y < 0.0f || sampleUV.y > 1.0f)
+        {
+            continue;
+        }
+
+        int2 samplePixel = int2(sampleUV * screenSize);
+        samplePixel = clamp(samplePixel, int2(0, 0), int2(screenSize) - int2(1, 1));
+
+        float sampleDepth = DepthTexture.Load(int3(samplePixel, 0));
+        if (sampleDepth >= 0.999999f)
+        {
+            continue;
+        }
+
+        float3 actualViewPos = ReconstructViewPosition(sampleUV, sampleDepth);
+        float depthDiff = abs(actualViewPos.z - viewPos.z);
+        float rangeCheck = 1.0f - smoothstep(maxDepthDiff * 0.5f, maxDepthDiff, depthDiff);
+
+        float isOccluder = (actualViewPos.z <= samplePos.z - bias) ? 1.0f : 0.0f;
+        occlusion += isOccluder * rangeCheck;
+    }
+
+    float ao = 1.0f - occlusion / (float)sampleCount;
+    ao = pow(saturate(ao), strength);
+
+    return float4(ao, ao, ao, 1.0f);
+}
