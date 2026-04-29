@@ -404,6 +404,9 @@
       <FileType>Document</FileType>
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">false</ExcludedFromBuild>
     </CopyFileToFolders>
+    <CopyFileToFolders Include="DebugTexture.ps">
+      <FileType>Document</FileType>
+    </CopyFileToFolders>
     <None Include="imgui\imgui.vcxproj" />
     <None Include="imgui\imgui.vcxproj.filters" />
     <None Include="imgui\imgui.vcxproj.user" />
@@ -482,6 +485,9 @@
       <FileType>Document</FileType>
     </CopyFileToFolders>
     <CopyFileToFolders Include="NormalPrepass.vs">
+      <FileType>Document</FileType>
+    </CopyFileToFolders>
+    <CopyFileToFolders Include="SSAO.ps">
       <FileType>Document</FileType>
     </CopyFileToFolders>
   </ItemGroup>

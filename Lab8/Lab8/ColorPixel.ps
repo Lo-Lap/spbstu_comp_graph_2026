@@ -6,6 +6,7 @@ Texture2D brdfLUT : register(t4);
 Texture2D emissiveTexture : register(t5);
 
 Texture2DArray shadowMap : register(t6);
+Texture2D ssaoTexture : register(t7);
 
 SamplerState samplerState : register(s0);
 SamplerComparisonState shadowCmpSampler : register(s2);
@@ -80,6 +81,28 @@ float3 CalculateNormalFromMap(float3 normal, float3 tangent, float3 bitangent, f
     float3x3 TBN = float3x3(normalize(tangent), normalize(bitangent), normalize(normal));
     return normalize(mul(mapNormal, TBN));
 };
+
+float3 GroundNormalMapMarkers(float2 texCoord)
+{
+    float3 normalRgb = normalMap.Sample(samplerState, texCoord).rgb;
+
+    float2 tileUv = frac(texCoord);
+    float2 distToGrid = min(tileUv, 1.0f - tileUv);
+    float2 fw = max(fwidth(texCoord), float2(1e-5f, 1e-5f));
+
+    float uLine = 1.0f - smoothstep(0.0f, fw.x * 1.5f, distToGrid.x);
+    float vLine = 1.0f - smoothstep(0.0f, fw.y * 1.5f, distToGrid.y);
+
+    float2 centerDelta = tileUv - 0.5f;
+    float centerDot = 1.0f - smoothstep(0.035f, 0.075f, length(centerDelta));
+
+    float3 color = normalRgb;
+    color = lerp(color, float3(1.0f, 0.05f, 0.05f), saturate(uLine * 0.85f));
+    color = lerp(color, float3(0.05f, 1.0f, 0.05f), saturate(vLine * 0.85f));
+    color = lerp(color, float3(1.0f, 1.0f, 0.05f), saturate(centerDot));
+
+    return color;
+}
 
 float DistributionGGX(float3 N, float3 H, float roughness)
 {
@@ -367,9 +390,10 @@ float4 main(PS_INPUT input) : SV_Target
     }
 
 
+
+    int debugMode = (int)(DebugView.x + 0.5f);
     float3 V = normalize(input.CameraPos - input.WorldPos);
     float3 F0 = lerp(float3(0.04f, 0.04f, 0.04f), albedo, metallic);
-    int debugMode = (int)(DebugView.x + 0.5f);
 
     float enableSpecularIBL = step(0.5f, DebugView.y);
     float diffuseIBLIntensity = max(DebugView.z, 0.0f);
@@ -456,9 +480,20 @@ float4 main(PS_INPUT input) : SV_Target
     float3 specularIBL = prefilteredColor * (F_ambient * envBRDF.x + envBRDF.y);
     specularIBL *= enableSpecularIBL * specularIBLIntensity;
 
-    float3 ambient = (diffuseIBL + specularIBL) * ao;
+    float ssao = 1.0f;
+    if (Extra.z > 0.5f)
+    {
+        int2 ssaoPixel = int2(input.Pos.xy);
+        ssao = saturate(ssaoTexture.Load(int3(ssaoPixel, 0)).r);
+    }
+
+    if (debugMode == 8) 
+    {
+        return float4(ssao.xxx, 1.0f);
+    }
+
+    float3 ambient = (diffuseIBL + specularIBL) * ao * ssao;
     
-    // debug views for IBL validation
     if (debugMode == 4) // Diffuse IBL
     {
         return float4(diffuseIBL * ao, 1.0f);

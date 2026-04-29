@@ -19,6 +19,10 @@
 
 using namespace DirectX;
 
+static constexpr UINT SSAO_MAX_SAMPLE_COUNT = 512;
+static constexpr UINT SSAO_NOISE_SIZE = 4;
+static constexpr UINT SSAO_NOISE_VECTOR_COUNT = SSAO_NOISE_SIZE * SSAO_NOISE_SIZE;
+
 class RenderClass
 {
 public:
@@ -56,6 +60,14 @@ public:
         m_SSAOBias(0.025f),
         m_SSAOStrength(1.2f),
         m_SSAOMaxDepthDiff(4.0f),
+        m_SSAOMode(1),
+        m_EnableSSAO(true),
+        m_GroundNormalStrength(0.2f),
+        m_EnableGroundNormalMap(true),
+        m_ShadowLightYawDeg(-10.0f),
+        m_ShadowLightPitchDeg(-61.0f),
+        m_pDebugTexturePS(nullptr),
+        m_pDebugTextureCB(nullptr),
         m_pNormalPrepassVS(nullptr),
         m_pNormalPrepassPS(nullptr),
         m_pColorBuffer(nullptr),
@@ -361,6 +373,8 @@ private:
     void RenderDepthNormalPrepass(const XMMATRIX& viewProj);
     void GenerateSSAOKernel();
     void RenderSSAO(const XMMATRIX& cameraView, const XMMATRIX& cameraProj);
+    void RenderDebugTexture(ID3D11ShaderResourceView* textureSRV, int mode);
+    bool IsFullScreenDebugView() const;
 
     void RenderGroundPlaneDepthNormal();
     void RenderAllSceneModelsDepthNormal();
@@ -429,6 +443,7 @@ private:
     void RenderSkybox(const XMMATRIX& viewProj);
 
     void UpdateCameraAndLightBuffers(const XMMATRIX& view, const XMMATRIX& viewProj);
+    void UpdateShadowLightDirectionFromAngles();
 
     HRESULT CreateHDRSceneTexture(UINT width, UINT height);
 
@@ -514,6 +529,7 @@ private:
     ID3D11InputLayout* m_pSkyLayout;
 
     static constexpr int kSphereCount = 4;
+
     ID3D11ShaderResourceView* m_pTextureViews[kSphereCount];
     ID3D11ShaderResourceView* m_pNormalMapViews[kSphereCount];
     ID3D11SamplerState* m_pSamplerState;
@@ -532,12 +548,19 @@ private:
 
     ID3D11PixelShader* m_pSSAOPS;
     ID3D11Buffer* m_pSSAOCB;
-    XMFLOAT4 m_SSAOSamples[64];
+    XMFLOAT4 m_SSAOSphereSamples[SSAO_MAX_SAMPLE_COUNT];
+    XMFLOAT4 m_SSAOHemisphereSamples[SSAO_MAX_SAMPLE_COUNT];
+    XMFLOAT4 m_SSAONoise[16];
     UINT m_SSAOSampleCount;
+    int m_SSAOMode;
     float m_SSAORadius;
     float m_SSAOBias;
     float m_SSAOStrength;
     float m_SSAOMaxDepthDiff;
+    bool m_EnableSSAO;
+
+    ID3D11PixelShader* m_pDebugTexturePS;
+    ID3D11Buffer* m_pDebugTextureCB;
 
     ID3D11VertexShader* m_pNormalPrepassVS;
     ID3D11PixelShader* m_pNormalPrepassPS;
@@ -631,7 +654,11 @@ private:
         DebugView_DiffuseIBL = 4,
         DebugView_SpecularIBL = 5,
         DebugView_AmbientIBL = 6,
-        DebugView_ReflectionOnly = 7
+        DebugView_ReflectionOnly = 7,
+        DebugView_SSAO = 8,
+        DebugView_NormalBuffer = 9,
+        DebugView_DepthBuffer = 10,
+        DebugView_GroundNormalMapMarkers = 11
     };
     int m_DebugViewMode;
 
@@ -673,6 +700,8 @@ private:
     ID3D11Buffer* m_pGroundIB;
     UINT m_GroundIndexCount;
     float m_GroundHalfSize = 100.0f;
+    float m_GroundNormalStrength;
+    bool m_EnableGroundNormalMap;
 
     std::vector<GltfModelResource> m_ModelResources;
     std::vector<SceneModelInstance> m_SceneModelInstances;
@@ -698,6 +727,8 @@ private:
     ID3D11DepthStencilState* m_pShadowDepthState;
     UINT m_ShadowMapSize;
     XMFLOAT3 m_ShadowLightDirection;
+    float m_ShadowLightYawDeg;
+    float m_ShadowLightPitchDeg;
     float m_ShadowBias;
     float m_ShadowSlopeBias;
     float m_ShadowStrength;

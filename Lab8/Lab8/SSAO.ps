@@ -1,16 +1,23 @@
 Texture2D<float> DepthTexture : register(t0);
 Texture2D<float4> NormalTexture : register(t1);
 
-static const int SSAO_MAX_SAMPLE_COUNT = 64;
+static const int SSAO_MAX_SAMPLE_COUNT = 512;
+static const int SSAO_NOISE_SIZE = 4;
+static const int SSAO_NOISE_VECTOR_COUNT = SSAO_NOISE_SIZE * SSAO_NOISE_SIZE;
+
+static const int SSAO_MODE_BASIC_SPHERE = 0;
+static const int SSAO_MODE_HALF_SPHERE = 1;
+static const int SSAO_MODE_HALF_SPHERE_NOISE = 2;
 
 cbuffer SSAOBuffer : register(b0)
 {
     matrix Proj;
     matrix InvProj;
     matrix View;
-    float4 Params0; // radius, bias, strength, maxDepthDiff
-    float4 Params1; // sampleCount, screenWidth, screenHeight, reserved
+    float4 Params0; 
+    float4 Params1; 
     float4 Samples[SSAO_MAX_SAMPLE_COUNT];
+    float4 Noise[SSAO_NOISE_VECTOR_COUNT];
 };
 
 struct PS_INPUT
@@ -24,6 +31,46 @@ float3 ReconstructViewPosition(float2 uv, float depth)
     float2 ndcXY = float2(uv.x * 2.0f - 1.0f, 1.0f - uv.y * 2.0f);
     float4 homoViewPos = mul(float4(ndcXY, depth, 1.0f), InvProj);
     return homoViewPos.xyz / max(abs(homoViewPos.w), 1e-5f);
+}
+
+void BuildTBN(float3 normalView, float3 rvec, out float3 tangent, out float3 bitangent)
+{
+    tangent = rvec - normalView * dot(rvec, normalView);
+    if (dot(tangent, tangent) < 1e-5f)
+    {
+        rvec = (abs(normalView.x) > 0.5f) ? float3(0.0f, 1.0f, 0.0f) : float3(1.0f, 0.0f, 0.0f);
+        tangent = rvec - normalView * dot(rvec, normalView);
+    }
+
+    tangent = normalize(tangent);
+    bitangent = cross(normalView, tangent);
+}
+
+float3 GetSSAOSampleVector(int mode, int sampleIndex, int2 pixel, float3 normalView)
+{
+    float3 kernelSample = Samples[sampleIndex].xyz;
+
+    if (mode == SSAO_MODE_BASIC_SPHERE)
+    {
+        return kernelSample;
+    }
+
+    float3 rvec = (abs(normalView.x - 1.0f) > 0.01f) ? float3(1.0f, 0.0f, 0.0f) : float3(0.0f, 1.0f, 0.0f);
+
+    if (mode == SSAO_MODE_HALF_SPHERE_NOISE)
+    {
+        int noiseI = pixel.x % SSAO_NOISE_SIZE;
+        int noiseJ = pixel.y % SSAO_NOISE_SIZE;
+        rvec = Noise[noiseJ * SSAO_NOISE_SIZE + noiseI].xyz;
+    }
+
+    float3 tangent;
+    float3 bitangent;
+    BuildTBN(normalView, rvec, tangent, bitangent);
+
+    return kernelSample.x * tangent +
+           kernelSample.y * bitangent +
+           kernelSample.z * normalView;
 }
 
 float4 main(PS_INPUT input) : SV_TARGET
@@ -46,6 +93,9 @@ float4 main(PS_INPUT input) : SV_TARGET
     int sampleCount = (int)(Params1.x + 0.5f);
     sampleCount = min(max(sampleCount, 1), SSAO_MAX_SAMPLE_COUNT);
 
+    int mode = (int)(Params1.w + 0.5f);
+    mode = clamp(mode, SSAO_MODE_BASIC_SPHERE, SSAO_MODE_HALF_SPHERE_NOISE);
+
     float2 uv = input.TexCoord;
     float3 viewPos = ReconstructViewPosition(uv, depth);
 
@@ -53,21 +103,12 @@ float4 main(PS_INPUT input) : SV_TARGET
     normalWorld = normalize(normalWorld);
     float3 normalView = normalize(mul(float4(normalWorld, 0.0f), View).xyz);
 
-    float3 rvec = (abs(normalView.x) > 0.5f) ? float3(0.0f, 1.0f, 0.0f) : float3(1.0f, 0.0f, 0.0f);
-    float3 tangent = normalize(rvec - normalView * dot(rvec, normalView));
-    float3 bitangent = cross(normalView, tangent);
-
     float occlusion = 0.0f;
 
     [loop]
     for (int i = 0; i < sampleCount; ++i)
     {
-        float3 kernelSample = Samples[i].xyz;
-        float3 sampleVector =
-            kernelSample.x * tangent +
-            kernelSample.y * bitangent +
-            kernelSample.z * normalView;
-
+        float3 sampleVector = GetSSAOSampleVector(mode, i, pixel, normalView);
         float3 samplePos = viewPos + sampleVector * radius;
 
         float4 projected = mul(float4(samplePos, 1.0f), Proj);

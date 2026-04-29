@@ -81,21 +81,25 @@ struct BloomParamsCB
     XMFLOAT4 Params1;
 };
 
-struct SpecularPrefilterCB
+struct DebugTextureParamsCB
 {
     XMFLOAT4 Params;
 };
 
-static constexpr UINT SSAO_MAX_SAMPLE_COUNT = 64;
+struct SpecularPrefilterCB
+{
+    XMFLOAT4 Params;
+};
 
 struct SSAOParamsCB
 {
     XMMATRIX Proj;
     XMMATRIX InvProj;
     XMMATRIX View;
-    XMFLOAT4 Params0;
-    XMFLOAT4 Params1;
+    XMFLOAT4 Params0; 
+    XMFLOAT4 Params1; 
     XMFLOAT4 Samples[SSAO_MAX_SAMPLE_COUNT];
+    XMFLOAT4 Noise[SSAO_NOISE_VECTOR_COUNT];
 };
 
 static XMMATRIX BuildViewMatrix(
@@ -123,6 +127,23 @@ static XMMATRIX BuildProjectionMatrix(float aspect, float nearZ, float farZ)
         nearZ,
         farZ
     );
+}
+
+void RenderClass::UpdateShadowLightDirectionFromAngles()
+{
+    m_ShadowLightPitchDeg = std::clamp(m_ShadowLightPitchDeg, -89.0f, 89.0f);
+
+    const float yaw = XMConvertToRadians(m_ShadowLightYawDeg);
+    const float pitch = XMConvertToRadians(m_ShadowLightPitchDeg);
+
+    XMVECTOR dir = XMVectorSet(
+        cosf(pitch) * sinf(yaw),
+        sinf(pitch),
+        cosf(pitch) * cosf(yaw),
+        0.0f
+    );
+    dir = XMVector3Normalize(dir);
+    XMStoreFloat3(&m_ShadowLightDirection, dir);
 }
 
 static std::wstring ToLowerCopy(std::wstring s)
@@ -340,6 +361,9 @@ HRESULT RenderClass::InitBufferShader()
         result = CompileShader(L"SSAO.ps", nullptr, &m_pSSAOPS);
 
     if (SUCCEEDED(result))
+        result = CompileShader(L"DebugTexture.ps", nullptr, &m_pDebugTexturePS);
+
+    if (SUCCEEDED(result))
         result = CompileShader(L"ShadowVertex.vs", &m_pShadowVertexShader, nullptr);
 
     if (SUCCEEDED(result))
@@ -470,6 +494,15 @@ HRESULT RenderClass::InitBufferShader()
     ssaoCBDesc.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
     ssaoCBDesc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
     result = m_pDevice->CreateBuffer(&ssaoCBDesc, nullptr, &m_pSSAOCB);
+    if (FAILED(result))
+        return result;
+
+    D3D11_BUFFER_DESC debugTextureCBDesc = {};
+    debugTextureCBDesc.Usage = D3D11_USAGE_DYNAMIC;
+    debugTextureCBDesc.ByteWidth = sizeof(DebugTextureParamsCB);
+    debugTextureCBDesc.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
+    debugTextureCBDesc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
+    result = m_pDevice->CreateBuffer(&debugTextureCBDesc, nullptr, &m_pDebugTextureCB);
     if (FAILED(result))
         return result;
 
@@ -608,14 +641,14 @@ HRESULT RenderClass::InitBufferShader()
          L"textures/bark_brown_02_diff_4k.dds",
          L"textures/blue_metal_plate_diff_4k.dds",
          L"textures/fabric_leather_02_diff_4k.dds",
-         L"textures/rocky_terrain_02_diff_1k.dds"
+         L"textures/old_stone_wall_diff_4k.dds"
     };
     const wchar_t* normalFiles[kSphereCount] =
     {
          L"textures/KORA_DEREVA.dds",
          L"textures/sinushnaya_zhelezka.dds",
          L"textures/gladkaya_kozha.dds",
-         L"textures/trava_s_kameshkami.dds"
+         L"textures/kameshki.dds"
     };
     for (int i = 0; i < kSphereCount; ++i)
     {
@@ -1203,6 +1236,18 @@ void RenderClass::TerminateBufferShader()
     {
         m_pSSAOCB->Release();
         m_pSSAOCB = nullptr;
+    }
+
+    if (m_pDebugTexturePS)
+    {
+        m_pDebugTexturePS->Release();
+        m_pDebugTexturePS = nullptr;
+    }
+
+    if (m_pDebugTextureCB)
+    {
+        m_pDebugTextureCB->Release();
+        m_pDebugTextureCB = nullptr;
     }
 
     if (m_pLightPixelShader)
@@ -1874,6 +1919,7 @@ void RenderClass::Render()
     );
 
     XMMATRIX viewProj = cameraView * cameraProj;
+    UpdateShadowLightDirectionFromAngles();
     UpdateCascadedShadowData(cameraView, cameraProj);
 
     ID3D11RenderTargetView* sceneRTV = (m_DebugViewMode == DebugView_Final) ? m_pHDRSceneRTV : m_pRenderTargetView;
@@ -1917,6 +1963,26 @@ void RenderClass::Render()
 
     RenderDepthNormalPrepass(viewProj);
     RenderSSAO(cameraView, cameraProj);
+
+    if (IsFullScreenDebugView())
+    {
+        ID3D11RenderTargetView* debugRTV = m_pRenderTargetView;
+        m_pDeviceContext->OMSetRenderTargets(1, &debugRTV, nullptr);
+        float debugClear[4] = { 0, 0, 0, 1 };
+        m_pDeviceContext->ClearRenderTargetView(debugRTV, debugClear);
+
+        if (m_DebugViewMode == DebugView_SSAO)
+            RenderDebugTexture(m_pSSAOSRV, 0);
+        else if (m_DebugViewMode == DebugView_NormalBuffer)
+            RenderDebugTexture(m_pNormalSRV, 1);
+        else if (m_DebugViewMode == DebugView_DepthBuffer)
+            RenderDebugTexture(m_pDepthSRV, 2);
+
+        RenderImGui();
+        m_pSwapChain->Present(1, 0);
+        return;
+    }
+
 
     sceneRTV = (m_DebugViewMode == DebugView_Final) ? m_pHDRSceneRTV : m_pRenderTargetView;
     m_pDeviceContext->OMSetRenderTargets(1, &sceneRTV, m_pDepthView);
@@ -2317,7 +2383,7 @@ void RenderClass::RenderGroundPlane(const XMMATRIX& viewProj)
         0.05f, // metallic
         0.82f, // roughness
         1.0f, // ao
-        0.0f // normal strength
+        m_EnableGroundNormalMap ? m_GroundNormalStrength : 0.0f // normal strength
     );
 
     materialParams.Albedo = XMFLOAT4(0.34f, 0.34f, 0.33f, 1.0f);
@@ -2332,22 +2398,24 @@ void RenderClass::RenderGroundPlane(const XMMATRIX& viewProj)
     materialParams.Extra = XMFLOAT4(
         m_ShowCascadeSplitColors ? 1.0f : 0.0f,
         1.0f,
-        0.0f,
-        0.0f
+        m_EnableSSAO ? 1.0f : 0.0f,
+        (m_DebugViewMode == DebugView_GroundNormalMapMarkers) ? 1.0f : 0.0f
     );;
 
     m_pDeviceContext->UpdateSubresource(m_pMaterialBuffer, 0, nullptr, &materialParams, 0, 0);
     m_pDeviceContext->PSSetConstantBuffers(3, 1, &m_pMaterialBuffer);
 
     ID3D11ShaderResourceView* groundDiffuseSRV = m_pTextureViews[3];
+    ID3D11ShaderResourceView* groundNormalSRV = m_pNormalMapViews[3];
     ID3D11ShaderResourceView* nullSRV = nullptr;
     m_pDeviceContext->PSSetShaderResources(0, 1, &groundDiffuseSRV);
-    m_pDeviceContext->PSSetShaderResources(1, 1, &nullSRV);
+    m_pDeviceContext->PSSetShaderResources(1, 1, &groundNormalSRV);
     m_pDeviceContext->PSSetShaderResources(2, 1, &m_pIrradianceSRV);
     m_pDeviceContext->PSSetShaderResources(3, 1, &m_pPrefilteredEnvSRV);
     m_pDeviceContext->PSSetShaderResources(4, 1, &m_pBRDFLUTSRV);
     m_pDeviceContext->PSSetShaderResources(5, 1, &nullSRV);
     m_pDeviceContext->PSSetShaderResources(6, 1, &m_pShadowMapSRV);
+    m_pDeviceContext->PSSetShaderResources(7, 1, &m_pSSAOSRV);
 
     m_pDeviceContext->IASetVertexBuffers(0, 1, &m_pGroundVB, &stride, &offset);
     m_pDeviceContext->IASetIndexBuffer(m_pGroundIB, DXGI_FORMAT_R32_UINT, 0);
@@ -2368,19 +2436,19 @@ void RenderClass::GenerateSSAOKernel()
     std::uniform_real_distribution<float> distMinusOneToOne(-1.0f, 1.0f);
     std::uniform_real_distribution<float> distZeroToOne(0.0f, 1.0f);
 
-    for (UINT i = 0; i < SSAO_MAX_SAMPLE_COUNT; ++i)
+    auto makeScaledSample = [&](float zMin, float zMax, UINT index) -> XMVECTOR
     {
         XMVECTOR sample = XMVectorSet(
             distMinusOneToOne(rng),
             distMinusOneToOne(rng),
-            distZeroToOne(rng),
+            zMin + (zMax - zMin) * distZeroToOne(rng),
             0.0f
         );
 
         const float lenSq = XMVectorGetX(XMVector3LengthSq(sample));
         if (lenSq < 1e-6f)
         {
-            sample = XMVectorSet(0.0f, 0.0f, 1.0f, 0.0f);
+            sample = XMVectorSet(0.0f, 0.0f, zMax >= 0.0f ? 1.0f : -1.0f, 0.0f);
         }
         else
         {
@@ -2389,11 +2457,37 @@ void RenderClass::GenerateSSAOKernel()
 
         sample = XMVectorScale(sample, distZeroToOne(rng));
 
-        float scale = static_cast<float>(i) / static_cast<float>(SSAO_MAX_SAMPLE_COUNT);
+        float scale = static_cast<float>(index) / static_cast<float>(SSAO_MAX_SAMPLE_COUNT);
         scale = 0.1f + 0.9f * scale * scale;
-        sample = XMVectorScale(sample, scale);
+        return XMVectorScale(sample, scale);
+    };
 
-        XMStoreFloat4(&m_SSAOSamples[i], sample);
+    for (UINT i = 0; i < SSAO_MAX_SAMPLE_COUNT; ++i)
+    {
+        XMStoreFloat4(&m_SSAOSphereSamples[i], makeScaledSample(-1.0f, 1.0f, i));
+        XMStoreFloat4(&m_SSAOHemisphereSamples[i], makeScaledSample(0.0f, 1.0f, i));
+    }
+
+    for (UINT i = 0; i < SSAO_NOISE_VECTOR_COUNT; ++i)
+    {
+        XMVECTOR noise = XMVectorSet(
+            distMinusOneToOne(rng),
+            distMinusOneToOne(rng),
+            0.0f,
+            0.0f
+        );
+
+        const float lenSq = XMVectorGetX(XMVector3LengthSq(noise));
+        if (lenSq < 1e-6f)
+        {
+            noise = XMVectorSet(1.0f, 0.0f, 0.0f, 0.0f);
+        }
+        else
+        {
+            noise = XMVector3Normalize(noise);
+        }
+
+        XMStoreFloat4(&m_SSAONoise[i], noise);
     }
 }
 
@@ -2416,6 +2510,12 @@ void RenderClass::RenderSSAO(const XMMATRIX& cameraView, const XMMATRIX& cameraP
 
     float clearSSAO[4] = { 1.0f, 1.0f, 1.0f, 1.0f };
     m_pDeviceContext->ClearRenderTargetView(m_pSSAORTV, clearSSAO);
+    if (!m_EnableSSAO)
+    {
+        m_pDeviceContext->OMSetRenderTargets(0, nullptr, nullptr);
+        return;
+    }
+
 
     D3D11_VIEWPORT vp = {};
     vp.Width = static_cast<FLOAT>(width);
@@ -2443,12 +2543,18 @@ void RenderClass::RenderSSAO(const XMMATRIX& cameraView, const XMMATRIX& cameraP
             static_cast<float>(std::min<UINT>(m_SSAOSampleCount, SSAO_MAX_SAMPLE_COUNT)),
             static_cast<float>(width),
             static_cast<float>(height),
-            0.0f
+            static_cast<float>(std::clamp(m_SSAOMode, 0, 2))
         );
 
+        const XMFLOAT4* selectedSamples = (m_SSAOMode == 0) ? m_SSAOSphereSamples : m_SSAOHemisphereSamples;
         for (UINT i = 0; i < SSAO_MAX_SAMPLE_COUNT; ++i)
         {
-            cb->Samples[i] = m_SSAOSamples[i];
+            cb->Samples[i] = selectedSamples[i];
+        }
+
+        for (UINT i = 0; i < SSAO_NOISE_VECTOR_COUNT; ++i)
+        {
+            cb->Noise[i] = m_SSAONoise[i];
         }
 
         m_pDeviceContext->Unmap(m_pSSAOCB, 0);
@@ -2475,6 +2581,53 @@ void RenderClass::RenderSSAO(const XMMATRIX& cameraView, const XMMATRIX& cameraP
     m_pDeviceContext->OMSetRenderTargets(0, nullptr, nullptr);
 }
 
+
+bool RenderClass::IsFullScreenDebugView() const
+{
+    return m_DebugViewMode == DebugView_SSAO ||
+        m_DebugViewMode == DebugView_NormalBuffer ||
+        m_DebugViewMode == DebugView_DepthBuffer;
+}
+
+void RenderClass::RenderDebugTexture(ID3D11ShaderResourceView* textureSRV, int mode)
+{
+    if (!textureSRV || !m_pDebugTexturePS || !m_pDebugTextureCB ||
+        !m_pFullScreenVS || !m_pFullScreenQuadVB || !m_pFullScreenLayout)
+    {
+        return;
+    }
+
+    D3D11_MAPPED_SUBRESOURCE mapped = {};
+    if (SUCCEEDED(m_pDeviceContext->Map(m_pDebugTextureCB, 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped)))
+    {
+        DebugTextureParamsCB* cb = reinterpret_cast<DebugTextureParamsCB*>(mapped.pData);
+        cb->Params = XMFLOAT4(
+            static_cast<float>(mode),
+            m_CameraNearZ,
+            m_CameraFarZ,
+            25.0f
+        );
+        m_pDeviceContext->Unmap(m_pDebugTextureCB, 0);
+    }
+
+    UINT stride = sizeof(FullScreenVertex);
+    UINT offset = 0;
+    m_pDeviceContext->IASetVertexBuffers(0, 1, &m_pFullScreenQuadVB, &stride, &offset);
+    m_pDeviceContext->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLESTRIP);
+    m_pDeviceContext->IASetInputLayout(m_pFullScreenLayout);
+    m_pDeviceContext->VSSetShader(m_pFullScreenVS, nullptr, 0);
+    m_pDeviceContext->PSSetShader(m_pDebugTexturePS, nullptr, 0);
+    m_pDeviceContext->PSSetSamplers(0, 1, &m_pSamplerState);
+    m_pDeviceContext->PSSetShaderResources(0, 1, &textureSRV);
+    m_pDeviceContext->PSSetConstantBuffers(0, 1, &m_pDebugTextureCB);
+
+    m_pDeviceContext->Draw(4, 0);
+
+    ID3D11ShaderResourceView* nullSRV = nullptr;
+    ID3D11Buffer* nullCB = nullptr;
+    m_pDeviceContext->PSSetShaderResources(0, 1, &nullSRV);
+    m_pDeviceContext->PSSetConstantBuffers(0, 1, &nullCB);
+}
 void RenderClass::RenderDepthNormalPrepass(const XMMATRIX& viewProj)
 {
     if (!m_pNormalRTV || !m_pDepthView || !m_pNormalPrepassVS || !m_pNormalPrepassPS)
@@ -3544,7 +3697,7 @@ void RenderClass::DrawGltfPrimitive(
     materialParams.Extra = XMFLOAT4(
         0.0f,
         receiveShadow ? 1.0f : 0.0f,
-        0.0f,
+        m_EnableSSAO ? 1.0f : 0.0f,
         0.0f
     );
 
@@ -3654,6 +3807,7 @@ void RenderClass::RenderAllSceneModels(const XMMATRIX& viewProj)
     m_pDeviceContext->PSSetSamplers(2, 1, &m_pShadowSampler);
     m_pDeviceContext->PSSetShaderResources(2, 1, &m_pIrradianceSRV);
     m_pDeviceContext->PSSetShaderResources(3, 1, &m_pPrefilteredEnvSRV);
+    m_pDeviceContext->PSSetShaderResources(7, 1, &m_pSSAOSRV);
     m_pDeviceContext->PSSetShaderResources(4, 1, &m_pBRDFLUTSRV);
     m_pDeviceContext->RSSetState(m_pGltfRasterState);
 
@@ -3671,6 +3825,7 @@ void RenderClass::RenderAllSceneModels(const XMMATRIX& viewProj)
     m_pDeviceContext->PSSetShaderResources(3, 1, &nullSRV);
     m_pDeviceContext->PSSetShaderResources(4, 1, &nullSRV);
     m_pDeviceContext->PSSetShaderResources(5, 1, &nullSRV);
+    m_pDeviceContext->PSSetShaderResources(7, 1, &nullSRV);
     m_pDeviceContext->PSSetShaderResources(6, 1, &nullSRV);
 }
 
@@ -4860,9 +5015,12 @@ void RenderClass::RenderImGui()
         "Diffuse IBL",
         "Specular IBL",
         "Ambient IBL",
-        "Reflection only"
+        "Reflection only",
+        "SSAO mask",
+        "Normal buffer",
+        "Depth buffer"
     };
-
+ 
     ImGui::Combo("View mode", &m_DebugViewMode, debugModes, IM_ARRAYSIZE(debugModes));
     ImGui::Separator();
 
@@ -4899,8 +5057,38 @@ void RenderClass::RenderImGui()
     ImGui::SliderFloat("Blur scale", &m_BloomBlurScale, 0.5f, 3.0f);
     ImGui::Separator();
 
-    ImGui::TextUnformatted("Shadows");
+    ImGui::TextUnformatted("Directional light");
     ImGui::Checkbox("Show cascade split colors", &m_ShowCascadeSplitColors);
+
+    bool lightChanged = false;
+    lightChanged |= ImGui::SliderFloat("Horizontal (phi)", &m_ShadowLightYawDeg, -180.0f, 180.0f, "%.1f deg");
+    lightChanged |= ImGui::SliderFloat("Vertical (theta)", &m_ShadowLightPitchDeg, -89.0f, 89.0f, " % .1f deg");
+    if (lightChanged)
+    {
+        UpdateShadowLightDirectionFromAngles();
+    }
+    ImGui::SliderFloat("Intensity", &m_LightBrightness[0], 0.0f, 2.0f, "%.2f");
+    ImGui::SliderFloat("Shadow strength", &m_ShadowStrength, 0.0f, 1.0f, "%.2f");
+    ImGui::Separator();
+
+    ImGui::TextUnformatted("SSAO");
+    ImGui::Checkbox("Enable SSAO", &m_EnableSSAO);
+    static const char* ssaoModes[] =
+    {
+        "Basic",
+        "Half sphere",
+        "Half sphere + noise"
+    };
+    ImGui::Combo("SSAO mode", &m_SSAOMode, ssaoModes, IM_ARRAYSIZE(ssaoModes));
+    ImGui::SliderFloat("SSAO kernel radius", &m_SSAORadius, 0.05f, 5.0f, "%.2f");
+    ImGui::SliderFloat("SSAO bias", &m_SSAOBias, 0.0f, 0.20f, "%.3f");
+    ImGui::SliderFloat("SSAO strength", &m_SSAOStrength, 0.1f, 4.0f, "%.2f");
+    int ssaoSampleCount = static_cast<int>(m_SSAOSampleCount);
+    if (ImGui::SliderInt("SSAO kernel samples", &ssaoSampleCount, 1, static_cast<int>(SSAO_MAX_SAMPLE_COUNT)))
+    {
+        m_SSAOSampleCount = static_cast<UINT>(std::clamp(ssaoSampleCount, 1, static_cast<int>(SSAO_MAX_SAMPLE_COUNT)));
+    }
+
     ImGui::End();
 
     ImGui::Render();
