@@ -1,0 +1,56 @@
+Texture2D DebugTexture : register(t0);
+SamplerState samplerState : register(s0);
+
+cbuffer DebugTextureBuffer : register(b0)
+{
+    float4 Params; 
+};
+
+struct PS_INPUT
+{
+    float4 Pos : SV_POSITION;
+    float2 TexCoord : TEXCOORD;
+};
+
+float LinearizeDepth(float depth)
+{
+    float nearZ = max(Params.y, 1e-4f);
+    float farZ = max(Params.z, nearZ + 1e-4f);
+    return (nearZ * farZ) / max(farZ - depth * (farZ - nearZ), 1e-5f);
+}
+
+float4 main(PS_INPUT input) : SV_TARGET
+{
+    float4 value = DebugTexture.Sample(samplerState, input.TexCoord);
+    int mode = (int)(Params.x + 0.5f);
+
+    if (mode == 1)
+    {
+        return float4(saturate(value.rgb), 1.0f);
+    }
+
+    if (mode == 2)
+    {
+        float linearDepth = LinearizeDepth(value.r);
+        float previewRange = max(Params.w, 1e-3f);
+        float depthPreview = saturate(linearDepth / previewRange);
+        return float4(depthPreview.xxx, 1.0f);
+    }
+
+    if (mode == 3)
+    {
+        return float4(saturate(value.rgb), 1.0f);
+    }
+
+    if (mode == 4)
+    {
+        return float4(saturate(value.yzw), 1.0f);
+    }
+
+    if (mode == 5)
+    {
+        return float4(saturate(value.rgb), 1.0f);
+    }
+
+    return float4(value.rrr, 1.0f);
+}
