@@ -1,0 +1,528 @@
+Texture2D diffuseTexture : register(t0);
+Texture2D normalMap : register(t1);
+TextureCube irradianceMap : register(t2);
+TextureCube prefilteredEnvMap : register(t3);
+Texture2D brdfLUT : register(t4);
+Texture2D emissiveTexture : register(t5);
+
+Texture2DArray shadowMap : register(t6);
+Texture2D ssaoTexture : register(t7);
+
+SamplerState samplerState : register(s0);
+SamplerComparisonState shadowCmpSampler : register(s2);
+
+static const float PI = 3.14159265359f;
+static const float MIN_ROUGHNESS = 0.045f;
+
+struct PointLight
+{
+    float3 Position;
+    float Range;
+    float3 Color;
+    float Intensity;
+};
+
+cbuffer LightBuffer : register(b2)
+{
+    PointLight lights[3];
+};
+
+cbuffer MaterialBuffer : register(b3)
+{
+    float4 Surface;
+    float4 Albedo;
+    float4 DebugView;
+    float4 Emissive;
+    float4 Extra;
+};
+
+cbuffer ShadowParamsBuffer : register(b4)
+{
+    float4 ShadowBiasTexelSizeBlend; 
+    float4 ShadowOptions;           
+};
+
+cbuffer ShadowLightBuffer : register(b5)
+{
+    matrix WorldToLightUV[4];
+    float4 CascadeSplits;
+    float4 ShadowLightDirStrength;
+    float4 CsmRatio;
+    float4 CameraForward;
+};
+
+struct PS_INPUT
+{
+    float4 Pos : SV_POSITION;
+    float3 WorldPos : TEXCOORD0;
+    float3 Normal : TEXCOORD1;
+    float2 TexCoord : TEXCOORD2;
+    float3 Tangent : TEXCOORD3;
+    float3 Bitangent : TEXCOORD4;
+    float3 CameraPos : TEXCOORD5;
+    float4 ShadowPos0 : TEXCOORD6;
+    float4 ShadowPos1 : TEXCOORD7;
+    float4 ShadowPos2 : TEXCOORD8;
+    float4 ShadowPos3 : TEXCOORD9;
+    float ViewDepth : TEXCOORD10;
+};
+
+bool IsInside(float2 uv)
+{
+    return uv.x >= 0.0f && uv.x <= 1.0f &&
+           uv.y >= 0.0f && uv.y <= 1.0f;
+}
+
+float3 CalculateNormalFromMap(float3 normal, float3 tangent, float3 bitangent, float2 texCoord, float normalStrength)
+{
+    float3 mapNormal = normalMap.Sample(samplerState, texCoord).xyz * 2.0f - 1.0f;
+    mapNormal.xy *= normalStrength;
+    mapNormal.z = sqrt(saturate(1.0f - dot(mapNormal.xy, mapNormal.xy)));
+    float3x3 TBN = float3x3(normalize(tangent), normalize(bitangent), normalize(normal));
+    return normalize(mul(mapNormal, TBN));
+};
+
+float3 GroundNormalMapMarkers(float2 texCoord)
+{
+    float3 normalRgb = normalMap.Sample(samplerState, texCoord).rgb;
+
+    float2 tileUv = frac(texCoord);
+    float2 distToGrid = min(tileUv, 1.0f - tileUv);
+    float2 fw = max(fwidth(texCoord), float2(1e-5f, 1e-5f));
+
+    float uLine = 1.0f - smoothstep(0.0f, fw.x * 1.5f, distToGrid.x);
+    float vLine = 1.0f - smoothstep(0.0f, fw.y * 1.5f, distToGrid.y);
+
+    float2 centerDelta = tileUv - 0.5f;
+    float centerDot = 1.0f - smoothstep(0.035f, 0.075f, length(centerDelta));
+
+    float3 color = normalRgb;
+    color = lerp(color, float3(1.0f, 0.05f, 0.05f), saturate(uLine * 0.85f));
+    color = lerp(color, float3(0.05f, 1.0f, 0.05f), saturate(vLine * 0.85f));
+    color = lerp(color, float3(1.0f, 1.0f, 0.05f), saturate(centerDot));
+
+    return color;
+}
+
+float DistributionGGX(float3 N, float3 H, float roughness)
+{
+    float a = roughness * roughness;
+    float a2 = a * a;
+    float NdotH = saturate(dot(N, H));
+    float NdotH2 = NdotH * NdotH;
+    float denom = NdotH2 * (a2 - 1.0f) + 1.0f;
+    return a2 / max(PI * denom * denom, 1e-5f);
+};
+
+float GeometrySchlickGGX(float NdotV, float roughness)
+{
+    float r = roughness + 1.0f;
+    float k = (r * r) / 8.0f;
+    return NdotV / max(NdotV * (1.0f - k) + k, 1e-5f);
+};
+
+float GeometrySmith(float3 N, float3 V, float3 L, float roughness)
+{
+    float NdotV = saturate(dot(N, V));
+    float NdotL = saturate(dot(N, L));
+    return GeometrySchlickGGX(NdotV, roughness) * GeometrySchlickGGX(NdotL, roughness);
+};
+
+float3 FresnelSchlick(float cosTheta, float3 F0)
+{
+    return F0 + (1.0f - F0) * pow(1.0f - saturate(cosTheta), 5.0f);
+};
+
+float3 FresnelSchlickRoughness(float cosTheta, float3 F0, float roughness)
+{
+    return F0 + (max(float3(1.0f - roughness, 1.0f - roughness, 1.0f - roughness), F0) - F0)
+    * pow(1.0f - saturate(cosTheta), 5.0f);
+}
+
+float ComputePointLightFalloff(float distanceToLight, float range)
+{
+    float invDist2 = 1.0f / max(distanceToLight * distanceToLight, 1e-4f);
+    float rangeFade = saturate(1.0f - pow(distanceToLight / max(range, 1e-4f), 4.0f));
+    return invDist2 * rangeFade * rangeFade;
+}
+
+float ComputeReceiverBias(float3 N, float3 L)
+{
+    float ndotl = saturate(dot(normalize(N), normalize(L)));
+    
+    float slope = sqrt(saturate(1.0f - ndotl * ndotl)) / max(ndotl, 0.05f);
+    slope = min(slope, 4.0f);
+
+    return ShadowBiasTexelSizeBlend.x + ShadowBiasTexelSizeBlend.y * slope;
+}
+
+float SampleShadow(float4 shadowPos, int splitIdx, float3 N, float3 L)
+{
+    float3 projCoords = shadowPos.xyz / max(shadowPos.w, 1e-5f);
+    if (!IsInside(projCoords.xy) || projCoords.z < 0.0f || projCoords.z > 1.0f)
+        return 1.0f;
+    
+    const float texel = ShadowBiasTexelSizeBlend.z;
+    
+    float compareDepth = saturate(projCoords.z - ComputeReceiverBias(N, L));
+    
+    float2 dx = ddx(projCoords.xy);
+    float2 dy = ddy(projCoords.xy);
+    float footprintTexels = max(length(dx), length(dy)) / max(texel, 1e-7f);
+    
+    float minRadius = ShadowOptions.z;
+    float maxRadius = ShadowOptions.w;
+    float radiusTexels = clamp(footprintTexels * 1.25f, minRadius, maxRadius);
+    
+    static const float2 poisson16[16] =
+    {
+        float2(-0.94201624f, -0.39906216f),
+        float2( 0.94558609f, -0.76890725f),
+        float2(-0.09418410f, -0.92938870f),
+        float2( 0.34495938f, 0.29387760f),
+        float2(-0.91588581f, 0.45771432f),
+        float2(-0.81544232f, -0.87912464f),
+        float2(-0.38277543f, 0.27676845f),
+        float2( 0.97484398f, 0.75648379f),
+        float2( 0.44323325f, -0.97511554f),
+        float2( 0.53742981f, -0.47373420f),
+        float2(-0.26496911f, -0.41893023f),
+        float2( 0.79197514f, 0.19090188f),
+        float2(-0.24188840f, 0.99706507f),
+        float2(-0.81409955f, 0.91437590f),
+        float2( 0.19984126f, 0.78641367f),
+        float2( 0.14383161f, -0.14100790f)
+    };
+
+    float visibility = 0.0f;
+
+    [unroll]
+    for (int i = 0; i < 16; ++i)
+    {
+        float2 uv = projCoords.xy + poisson16[i] * radiusTexels * texel;
+        visibility += shadowMap.SampleCmpLevelZero(
+            shadowCmpSampler,
+            float3(uv, splitIdx),
+            compareDepth
+            );
+    }
+
+    return visibility / 16.0f;
+}
+
+
+
+bool IsShadowCoordValid(float4 shadowPos)
+{
+    float3 projCoords = shadowPos.xyz / max(shadowPos.w, 1e-5f);
+    return IsInside(projCoords.xy) && projCoords.z >= 0.0f && projCoords.z <= 1.0f;
+}
+
+int SelectCascade(float viewDepth)
+{
+    if (viewDepth < CascadeSplits.x) return 0;
+    if (viewDepth < CascadeSplits.y) return 1;
+    if (viewDepth < CascadeSplits.z) return 2;
+    if (viewDepth < CascadeSplits.w) return 3;
+    return -1;
+}
+
+float4 GetCascadeShadowPos(PS_INPUT input, int cascade)
+{
+    if (cascade == 0) return input.ShadowPos0;
+    if (cascade == 1) return input.ShadowPos1;
+    if (cascade == 2) return input.ShadowPos2;
+    if (cascade == 3) return input.ShadowPos3;
+    return 0.0f;
+}
+
+float SampleShadowWithCascadeFallback(PS_INPUT input, int cascade, float3 N, float3 L)
+{
+    if (cascade < 0)
+        return 1.0f;
+
+    float4 shadowPos = GetCascadeShadowPos(input, cascade);
+    if (IsShadowCoordValid(shadowPos))
+        return SampleShadow(shadowPos, cascade, N, L);
+
+    [loop]
+    for (int nextCascade = cascade + 1; nextCascade < 4; ++nextCascade)
+    {
+        shadowPos = GetCascadeShadowPos(input, nextCascade);
+        if (IsShadowCoordValid(shadowPos))
+            return SampleShadow(shadowPos, nextCascade, N, L);
+    }
+
+    [loop]
+    for (int prevCascade = cascade - 1; prevCascade >= 0; --prevCascade)
+    {
+        shadowPos = GetCascadeShadowPos(input, prevCascade);
+        if (IsShadowCoordValid(shadowPos))
+            return SampleShadow(shadowPos, prevCascade, N, L);
+    }
+
+    return 1.0f;
+}
+
+float CalculateShadowSimple(PS_INPUT input, float3 N, float3 L)
+{
+    return SampleShadow(input.ShadowPos0, 0, N, L);
+}
+
+float CalculateShadowPSSM(PS_INPUT input, float3 N, float3 L)
+{
+    int cascade = SelectCascade(input.ViewDepth);
+    if (cascade < 0)
+        return 1.0f;
+
+    return SampleShadowWithCascadeFallback(input, cascade, N, L);
+}
+
+int SelectCascadeCSMByCoverage(PS_INPUT input)
+{
+    [unroll]
+    for (int cascade = 0; cascade < 4; ++cascade)
+    {
+        if (IsShadowCoordValid(GetCascadeShadowPos(input, cascade)))
+            return cascade;
+    }
+    return -1;
+}
+
+float CalculateShadowCSM(PS_INPUT input, float3 N, float3 L)
+{
+    int cascade = SelectCascadeCSMByCoverage(input);
+    if (cascade < 0)
+        return 1.0f;
+    float shadow = SampleShadowWithCascadeFallback(input, cascade, N, L);
+    
+    if (cascade < 3)
+    {
+        float4 shadowPos = GetCascadeShadowPos(input, cascade);
+        float3 projCoords = shadowPos.xyz / max(shadowPos.w, 1e-5f);
+        
+        float edgeDist = min(
+            min(projCoords.x, 1.0f - projCoords.x),
+            min(projCoords.y, 1.0f - projCoords.y)
+            );
+        
+        float blendBandUv = ShadowBiasTexelSizeBlend.w;
+
+        if (edgeDist < blendBandUv)
+        {
+            float nextShadow = SampleShadowWithCascadeFallback(input, cascade + 1, N, L);
+            float t = saturate(edgeDist / max(blendBandUv, 1e-6f));
+            shadow = lerp(nextShadow, shadow, t);
+        }
+    }
+    return shadow;
+}
+
+
+float ComputeReferenceShadowFactor(PS_INPUT input, float3 N, float3 L)
+{
+    int shadowMode = (int)(ShadowOptions.x + 0.5f);
+
+    if (shadowMode == 0) return CalculateShadowSimple(input, N, L);
+    if (shadowMode == 1) return CalculateShadowPSSM(input, N, L);
+    if (shadowMode == 2) return CalculateShadowCSM(input, N, L);
+
+    return 1.0f;
+}
+
+float3 GetCascadeDebugColor(int cascade)
+{
+    if (cascade == 0) return float3(1.0f, 0.15f, 0.15f);
+    if (cascade == 1) return float3(0.15f, 1.0f, 0.15f);
+    if (cascade == 2) return float3(0.15f, 0.35f, 1.0f);
+    return float3(1.0f, 1.0f, 0.15f);
+}
+
+int SelectGroundPlaneDebugSplit(PS_INPUT input)
+{
+    float3 cameraToPoint = input.WorldPos - input.CameraPos;
+    float viewDepth = dot(cameraToPoint, normalize(CameraForward.xyz));
+
+    if (viewDepth < 0.0f)
+        return -1;
+
+    if (viewDepth <= CascadeSplits.x) return 0;
+    if (viewDepth <= CascadeSplits.y) return 1;
+    if (viewDepth <= CascadeSplits.z) return 2;
+    if (viewDepth <= CascadeSplits.w) return 3;
+    return -1;
+}
+
+float4 main(PS_INPUT input) : SV_Target
+{
+    float metallic = saturate(Surface.x);
+    float roughness = max(saturate(Surface.y), MIN_ROUGHNESS);
+    float ao = saturate(Surface.z);
+    float normalStrength = max(Surface.w, 0.0f);
+
+    float useTextures = step(0.5f, Albedo.a);
+    float3 texAlbedo = diffuseTexture.Sample(samplerState, input.TexCoord).rgb;
+    float3 albedo = lerp(
+        saturate(Albedo.rgb),
+        saturate(texAlbedo * Albedo.rgb),
+        useTextures
+    );
+
+    float useEmissiveTex = step(0.5f, Emissive.a);
+    float3 texEmissive = emissiveTexture.Sample(samplerState, input.TexCoord).rgb;
+    float3 emissive = lerp(
+        saturate(Emissive.rgb),
+        texEmissive * Emissive.rgb,
+        useEmissiveTex
+    );
+
+
+    float3 N = normalize(input.Normal);
+    if (useTextures > 0.5f)
+    {
+         N = CalculateNormalFromMap(
+         input.Normal,
+         input.Tangent,
+         input.Bitangent,
+         input.TexCoord,
+         normalStrength
+         );
+    }
+
+
+
+    int debugMode = (int)(DebugView.x + 0.5f);
+    float3 V = normalize(input.CameraPos - input.WorldPos);
+    float3 F0 = lerp(float3(0.04f, 0.04f, 0.04f), albedo, metallic);
+
+    float enableSpecularIBL = step(0.5f, DebugView.y);
+    float diffuseIBLIntensity = max(DebugView.z, 0.0f);
+    float specularIBLIntensity = max(DebugView.w, 0.0f);
+    float3 Lo = 0.0f;
+
+    bool receivesShadow = (Extra.y > 0.5f);
+
+    [unroll]
+    for (int i = 0; i < 3; ++i)
+    {
+        if (lights[i].Intensity <= 0.0001f || lights[i].Range <= 0.0001f)
+            continue;
+        
+        float3 L;
+        float distanceToLight = 1.0f;
+        float attenuation = 1.0f;
+        if (i == 0)
+        {
+            L = normalize(-ShadowLightDirStrength.xyz);
+            attenuation = 1.0f;
+        }
+        else
+        {
+            float3 Lvec = lights[i].Position - input.WorldPos;
+            distanceToLight = length(Lvec);
+            L = Lvec / max(distanceToLight, 1e-4f);
+            attenuation = ComputePointLightFalloff(distanceToLight, lights[i].Range);
+        }
+
+        float3 H = normalize(V + L);
+        float NdotL = saturate(dot(N, L));
+        float shadowFactor = 1.0f;
+
+        if (i == 0 && receivesShadow)
+        {
+            shadowFactor = ComputeReferenceShadowFactor(input, N, L);
+        }
+
+        float NdotV_local = saturate(dot(N, V));
+
+        if (NdotL <= 0.0f || NdotV_local <= 0.0f)
+            continue;
+
+        float3 radiance = lights[i].Color * lights[i].Intensity * attenuation;
+        float NDF = DistributionGGX(N, H, roughness);
+        float G = GeometrySmith(N, V, L, roughness);
+        float3 F = FresnelSchlick(saturate(dot(H, V)), F0);
+        
+        float3 numerator = NDF * G * F;
+        float denominator = max(4.0f * NdotV_local * NdotL, 1e-4f);
+        float3 specular = numerator / denominator;
+        float3 kS = F;
+        float3 kD = (1.0f - kS) * (1.0f - metallic);
+        float3 diffuse = kD * albedo / PI;
+        
+        float shadowStrength = saturate(ShadowLightDirStrength.w);
+        float visibility = lerp(1.0f - shadowStrength, 1.0f, shadowFactor);
+        
+        Lo += (diffuse + specular) * radiance * NdotL * visibility;
+    }
+
+    float NdotV = saturate(dot(N, V));
+    float3 R = reflect(-V, N);
+    float3 F_ambient = FresnelSchlickRoughness(NdotV, F0, roughness);
+    float3 kS_ambient = F_ambient;
+    float3 kD_ambient = (1.0f - kS_ambient) * (1.0f - metallic);
+
+    float3 irradiance = irradianceMap.Sample(samplerState, N).rgb;
+    float3 diffuseIBL = kD_ambient * irradiance * albedo * diffuseIBLIntensity;
+
+    const float MAX_REFLECTION_LOD = 4.0f;
+    float3 prefilteredColor = prefilteredEnvMap.SampleLevel(
+        samplerState,
+        R,
+        roughness * MAX_REFLECTION_LOD
+    ).rgb;
+
+    float2 envBRDF = brdfLUT.Sample(
+        samplerState,
+        float2(NdotV, roughness)
+    ).rg;
+
+    float3 specularIBL = prefilteredColor * (F_ambient * envBRDF.x + envBRDF.y);
+    specularIBL *= enableSpecularIBL * specularIBLIntensity;
+
+    float ssao = 1.0f;
+    if (Extra.z > 0.5f)
+    {
+        int2 ssaoPixel = int2(input.Pos.xy);
+        ssao = saturate(ssaoTexture.Load(int3(ssaoPixel, 0)).r);
+    }
+
+    if (debugMode == 8) 
+    {
+        return float4(ssao.xxx, 1.0f);
+    }
+
+    float3 ambient = (diffuseIBL + specularIBL) * ao * ssao;
+    
+    if (debugMode == 4) // Diffuse IBL
+    {
+        return float4(diffuseIBL * ao, 1.0f);
+    }
+
+    if (debugMode == 5) // Specular IBL
+    {
+        return float4(specularIBL * ao, 1.0f);
+    }
+
+    if (debugMode == 6) // Ambient IBL
+    {
+        return float4(ambient, 1.0f);
+    }
+
+    if (debugMode == 7) // Reflection only
+    {
+        return float4(prefilteredColor, 1.0f);
+    }
+
+    float3 color = ambient + Lo + emissive;
+    if (Extra.x > 0.5f)
+    {
+        int split = SelectGroundPlaneDebugSplit(input);
+        if (split >= 0)
+        {
+            return float4(GetCascadeDebugColor(split), 1.0f);
+        }
+    }
+
+    return float4(color, 1.0f);
+}
