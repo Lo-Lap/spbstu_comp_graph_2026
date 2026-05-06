@@ -22,6 +22,7 @@ using namespace DirectX;
 static constexpr UINT SSAO_MAX_SAMPLE_COUNT = 512;
 static constexpr UINT SSAO_NOISE_SIZE = 4;
 static constexpr UINT SSAO_NOISE_VECTOR_COUNT = SSAO_NOISE_SIZE * SSAO_NOISE_SIZE;
+static constexpr UINT DEFERRED_MAX_POINT_LIGHTS = 128;
 
 class RenderClass
 {
@@ -45,6 +46,7 @@ public:
         m_pSamplerState(nullptr),
 
         m_pDepthView(nullptr),
+        m_pDepthReadOnlyView(nullptr),
         m_pDepthTexture(nullptr),
         m_pDepthSRV(nullptr),
         m_pNormalTexture(nullptr),
@@ -79,6 +81,16 @@ public:
         m_pDebugTextureCB(nullptr),
         m_pGBufferVS(nullptr),
         m_pGBufferPS(nullptr),
+        m_pDeferredLightingPS(nullptr),
+        m_pDeferredFrameBuffer(nullptr),
+        m_pDeferredLightBuffer(nullptr),
+        m_pDeferredLightingDepthOffState(nullptr),
+        m_pPointLightDepthState(nullptr),
+        m_pPointLightRasterState(nullptr),
+        m_pAdditiveBlendState(nullptr),
+        m_DeferredPointLightCount(64),
+        m_DeferredLightIntensityScale(1.0f),
+        m_DeferredLightRadius(18.0f),
         m_pColorBuffer(nullptr),
 
         m_pLightBuffer(nullptr),
@@ -315,6 +327,14 @@ private:
         XMMATRIX LightViewProj;
     };
 
+    struct DeferredPointLightData
+    {
+        XMFLOAT3 Position;
+        float Range;
+        XMFLOAT3 Color;
+        float Intensity;
+    };
+
     struct ShadowParamsCB
     {
         XMFLOAT4 ShadowBiasAndTexelSize;
@@ -382,6 +402,10 @@ private:
     HRESULT CreateSSAOResources(UINT width, UINT height);
     void ReleaseSSAOResources();
     void RenderGBufferPass(const XMMATRIX& viewProj);
+    void BuildDeferredPointLights();
+    void RenderDeferredLighting(const XMMATRIX& viewProj, ID3D11RenderTargetView* targetRTV);
+    void RenderDeferredDirectionalLighting();
+    void RenderDeferredPointLighting(const XMMATRIX& viewProj);
     void GenerateSSAOKernel();
     void RenderSSAO(const XMMATRIX& cameraView, const XMMATRIX& cameraProj);
     void RenderDebugTexture(ID3D11ShaderResourceView* textureSRV, int mode);
@@ -546,6 +570,7 @@ private:
     ID3D11SamplerState* m_pSamplerState;
 
     ID3D11DepthStencilView* m_pDepthView;
+    ID3D11DepthStencilView* m_pDepthReadOnlyView;
     ID3D11Texture2D* m_pDepthTexture;
     ID3D11ShaderResourceView* m_pDepthSRV;
 
@@ -585,6 +610,17 @@ private:
 
     ID3D11VertexShader* m_pGBufferVS;
     ID3D11PixelShader* m_pGBufferPS;
+    ID3D11PixelShader* m_pDeferredLightingPS;
+    ID3D11Buffer* m_pDeferredFrameBuffer;
+    ID3D11Buffer* m_pDeferredLightBuffer;
+    ID3D11DepthStencilState* m_pDeferredLightingDepthOffState;
+    ID3D11DepthStencilState* m_pPointLightDepthState;
+    ID3D11RasterizerState* m_pPointLightRasterState;
+    ID3D11BlendState* m_pAdditiveBlendState;
+    std::vector<DeferredPointLightData> m_DeferredPointLights;
+    int m_DeferredPointLightCount;
+    float m_DeferredLightIntensityScale;
+    float m_DeferredLightRadius;
 
     ID3D11Buffer* m_pColorBuffer;
 
@@ -682,7 +718,8 @@ private:
         DebugView_GroundNormalMapMarkers = 11,
         DebugView_GBufferAlbedo = 12,
         DebugView_GBufferMaterial = 13,
-        DebugView_GBufferEmissive = 14
+        DebugView_GBufferEmissive = 14,
+        DebugView_DeferredLighting = 15
     };
     int m_DebugViewMode;
 

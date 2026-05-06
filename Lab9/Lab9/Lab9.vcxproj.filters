@@ -350,6 +350,9 @@
     <CopyFileToFolders Include="DebugTexture.ps">
       <Filter>shader</Filter>
     </CopyFileToFolders>
+    <CopyFileToFolders Include="DeferredLighting.ps">
+      <Filter>shader</Filter>
+    </CopyFileToFolders>
   </ItemGroup>
   <ItemGroup>
     <None Include="imgui\imgui.vcxproj">

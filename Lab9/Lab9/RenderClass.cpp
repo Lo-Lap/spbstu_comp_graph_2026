@@ -55,6 +55,22 @@ struct PointLight
     float Intensity;
 };
 
+struct DeferredLightingFrameCB
+{
+    XMMATRIX InvViewProj;
+    XMFLOAT4 CameraPositionLightCount;
+    XMFLOAT4 ScreenSizeParams;
+    XMFLOAT4 DirectionalLight;
+    XMFLOAT4 IBLParams;
+};
+
+struct DeferredLightingLightCB
+{
+    XMFLOAT4 PositionRange;
+    XMFLOAT4 ColorIntensity;
+    XMFLOAT4 Params;
+};
+
 struct FullScreenVertex
 {
     XMFLOAT3 Pos;
@@ -312,6 +328,7 @@ HRESULT RenderClass::Init(HWND hWnd, WCHAR szTitle[], WCHAR szWindowClass[])
             return result;
 
         LoadSceneModels();
+        BuildDeferredPointLights();
     }
 
     if (SUCCEEDED(result))
@@ -361,6 +378,9 @@ HRESULT RenderClass::InitBufferShader()
 
     if (SUCCEEDED(result))
         result = CompileShader(L"GBufferPixel.ps", nullptr, &m_pGBufferPS);
+
+    if (SUCCEEDED(result))
+        result = CompileShader(L"DeferredLighting.ps", nullptr, &m_pDeferredLightingPS);
 
     if (SUCCEEDED(result))
         result = CompileShader(L"SSAO.ps", nullptr, &m_pSSAOPS);
@@ -508,6 +528,62 @@ HRESULT RenderClass::InitBufferShader()
     debugTextureCBDesc.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
     debugTextureCBDesc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
     result = m_pDevice->CreateBuffer(&debugTextureCBDesc, nullptr, &m_pDebugTextureCB);
+    if (FAILED(result))
+        return result;
+
+    D3D11_BUFFER_DESC deferredFrameCBDesc = {};
+    deferredFrameCBDesc.Usage = D3D11_USAGE_DYNAMIC;
+    deferredFrameCBDesc.ByteWidth = sizeof(DeferredLightingFrameCB);
+    deferredFrameCBDesc.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
+    deferredFrameCBDesc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
+    result = m_pDevice->CreateBuffer(&deferredFrameCBDesc, nullptr, &m_pDeferredFrameBuffer);
+    if (FAILED(result))
+        return result;
+
+    D3D11_BUFFER_DESC deferredLightCBDesc = {};
+    deferredLightCBDesc.Usage = D3D11_USAGE_DYNAMIC;
+    deferredLightCBDesc.ByteWidth = sizeof(DeferredLightingLightCB);
+    deferredLightCBDesc.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
+    deferredLightCBDesc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
+    result = m_pDevice->CreateBuffer(&deferredLightCBDesc, nullptr, &m_pDeferredLightBuffer);
+    if (FAILED(result))
+        return result;
+
+    D3D11_DEPTH_STENCIL_DESC deferredDepthOffDesc = {};
+    deferredDepthOffDesc.DepthEnable = FALSE;
+    deferredDepthOffDesc.DepthWriteMask = D3D11_DEPTH_WRITE_MASK_ZERO;
+    deferredDepthOffDesc.DepthFunc = D3D11_COMPARISON_ALWAYS;
+    result = m_pDevice->CreateDepthStencilState(&deferredDepthOffDesc, &m_pDeferredLightingDepthOffState);
+    if (FAILED(result))
+        return result;
+
+    D3D11_DEPTH_STENCIL_DESC pointDepthDesc = {};
+    pointDepthDesc.DepthEnable = TRUE;
+    pointDepthDesc.DepthWriteMask = D3D11_DEPTH_WRITE_MASK_ZERO;
+    pointDepthDesc.DepthFunc = D3D11_COMPARISON_GREATER_EQUAL;
+    result = m_pDevice->CreateDepthStencilState(&pointDepthDesc, &m_pPointLightDepthState);
+    if (FAILED(result))
+        return result;
+
+    D3D11_RASTERIZER_DESC pointRasterDesc = {};
+    pointRasterDesc.FillMode = D3D11_FILL_SOLID;
+    pointRasterDesc.CullMode = D3D11_CULL_FRONT;
+    pointRasterDesc.FrontCounterClockwise = FALSE;
+    pointRasterDesc.DepthClipEnable = TRUE;
+    result = m_pDevice->CreateRasterizerState(&pointRasterDesc, &m_pPointLightRasterState);
+    if (FAILED(result))
+        return result;
+
+    D3D11_BLEND_DESC additiveBlendDesc = {};
+    additiveBlendDesc.RenderTarget[0].BlendEnable = TRUE;
+    additiveBlendDesc.RenderTarget[0].SrcBlend = D3D11_BLEND_ONE;
+    additiveBlendDesc.RenderTarget[0].DestBlend = D3D11_BLEND_ONE;
+    additiveBlendDesc.RenderTarget[0].BlendOp = D3D11_BLEND_OP_ADD;
+    additiveBlendDesc.RenderTarget[0].SrcBlendAlpha = D3D11_BLEND_ONE;
+    additiveBlendDesc.RenderTarget[0].DestBlendAlpha = D3D11_BLEND_ONE;
+    additiveBlendDesc.RenderTarget[0].BlendOpAlpha = D3D11_BLEND_OP_ADD;
+    additiveBlendDesc.RenderTarget[0].RenderTargetWriteMask = D3D11_COLOR_WRITE_ENABLE_ALL;
+    result = m_pDevice->CreateBlendState(&additiveBlendDesc, &m_pAdditiveBlendState);
     if (FAILED(result))
         return result;
 
@@ -1166,6 +1242,12 @@ void RenderClass::Terminate()
         m_pDepthView = nullptr;
     }
 
+    if (m_pDepthReadOnlyView)
+    {
+        m_pDepthReadOnlyView->Release();
+        m_pDepthReadOnlyView = nullptr;
+    }
+
     if (m_pDepthTexture)
     {
         m_pDepthTexture->Release();
@@ -1238,6 +1320,12 @@ void RenderClass::TerminateBufferShader()
         m_pSSAOPS = nullptr;
     }
 
+    if (m_pDeferredLightingPS)
+    {
+        m_pDeferredLightingPS->Release();
+        m_pDeferredLightingPS = nullptr;
+    }
+
     if (m_pSSAOCB)
     {
         m_pSSAOCB->Release();
@@ -1254,6 +1342,42 @@ void RenderClass::TerminateBufferShader()
     {
         m_pDebugTextureCB->Release();
         m_pDebugTextureCB = nullptr;
+    }
+
+    if (m_pDeferredFrameBuffer)
+    {
+        m_pDeferredFrameBuffer->Release();
+        m_pDeferredFrameBuffer = nullptr;
+    }
+
+    if (m_pDeferredLightBuffer)
+    {
+        m_pDeferredLightBuffer->Release();
+        m_pDeferredLightBuffer = nullptr;
+    }
+
+    if (m_pDeferredLightingDepthOffState)
+    {
+        m_pDeferredLightingDepthOffState->Release();
+        m_pDeferredLightingDepthOffState = nullptr;
+    }
+
+    if (m_pPointLightDepthState)
+    {
+        m_pPointLightDepthState->Release();
+        m_pPointLightDepthState = nullptr;
+    }
+
+    if (m_pPointLightRasterState)
+    {
+        m_pPointLightRasterState->Release();
+        m_pPointLightRasterState = nullptr;
+    }
+
+    if (m_pAdditiveBlendState)
+    {
+        m_pAdditiveBlendState->Release();
+        m_pAdditiveBlendState = nullptr;
     }
 
     if (m_pLightPixelShader)
@@ -1970,6 +2094,19 @@ void RenderClass::Render()
     RenderGBufferPass(viewProj);
     RenderSSAO(cameraView, cameraProj);
 
+
+    if (m_DebugViewMode == DebugView_DeferredLighting)
+    {
+        ID3D11RenderTargetView* debugRTV = m_pRenderTargetView;
+        m_pDeviceContext->OMSetRenderTargets(1, &debugRTV, m_pDepthView);
+        float debugClear[4] = { 0, 0, 0, 1 };
+        m_pDeviceContext->ClearRenderTargetView(debugRTV, debugClear);
+        RenderDeferredLighting(viewProj, debugRTV);
+        RenderImGui();
+        m_pSwapChain->Present(1, 0);
+        return;
+    }
+
     if (IsFullScreenDebugView())
     {
         ID3D11RenderTargetView* debugRTV = m_pRenderTargetView;
@@ -2180,6 +2317,12 @@ HRESULT RenderClass::ConfigureBackBuffer(UINT width, UINT height)
     dsvDesc.Texture2D.MipSlice = 0;
 
     hr = m_pDevice->CreateDepthStencilView(m_pDepthTexture, &dsvDesc, &m_pDepthView);
+    if (FAILED(hr))
+        return hr;
+
+    D3D11_DEPTH_STENCIL_VIEW_DESC readOnlyDsvDesc = dsvDesc;
+    readOnlyDsvDesc.Flags = D3D11_DSV_READ_ONLY_DEPTH;
+    hr = m_pDevice->CreateDepthStencilView(m_pDepthTexture, &readOnlyDsvDesc, &m_pDepthReadOnlyView);
     if (FAILED(hr))
         return hr;
 
@@ -3076,6 +3219,216 @@ void RenderClass::PrecomputeSceneModelTransforms()
 
         inst.PrecomputedWorld = scaleM * rotM * transM;
     }
+}
+
+
+void RenderClass::BuildDeferredPointLights()
+{
+    m_DeferredPointLights.clear();
+    m_DeferredPointLights.reserve(DEFERRED_MAX_POINT_LIGHTS);
+
+    const XMFLOAT3 colors[] =
+    {
+        XMFLOAT3(1.0f, 0.24f, 0.18f),
+        XMFLOAT3(0.18f, 0.45f, 1.0f),
+        XMFLOAT3(0.18f, 1.0f, 0.48f),
+        XMFLOAT3(1.0f, 0.85f, 0.25f),
+        XMFLOAT3(0.75f, 0.32f, 1.0f),
+        XMFLOAT3(0.25f, 1.0f, 0.95f)
+    };
+
+    const int columns = 16;
+    const int rows = 8;
+    const float spacingX = 8.0f;
+    const float spacingZ = 8.0f;
+
+    for (UINT i = 0; i < DEFERRED_MAX_POINT_LIGHTS; ++i)
+    {
+        const int xIndex = static_cast<int>(i % columns);
+        const int zIndex = static_cast<int>((i / columns) % rows);
+        const float x = (static_cast<float>(xIndex) - (columns - 1) * 0.5f) * spacingX;
+        const float z = (static_cast<float>(zIndex) - (rows - 1) * 0.5f) * spacingZ;
+        const float y = 2.5f + 1.6f * sinf(static_cast<float>(i) * 0.73f);
+
+        DeferredPointLightData light = {};
+        light.Position = XMFLOAT3(x, y, z);
+        light.Range = m_DeferredLightRadius;
+        light.Color = colors[i % _countof(colors)];
+        light.Intensity = 300.0f + 80.0f * static_cast<float>(i % 5);
+        m_DeferredPointLights.push_back(light);
+    }
+}
+
+void RenderClass::RenderDeferredLighting(const XMMATRIX& viewProj, ID3D11RenderTargetView* targetRTV)
+{
+    if (!targetRTV || !m_pDeferredLightingPS || !m_pDeferredFrameBuffer || !m_pDeferredLightBuffer ||
+        !m_pGBufferAlbedoSRV || !m_pGBufferMaterialSRV || !m_pNormalSRV || !m_pGBufferEmissiveSRV ||
+        !m_pDepthSRV || !m_pFullScreenVS || !m_pFullScreenQuadVB || !m_pFullScreenLayout)
+    {
+        return;
+    }
+
+    RECT rc;
+    GetClientRect(FindWindow(m_szWindowClass, m_szTitle), &rc);
+    const float width = static_cast<float>(std::max<LONG>(1, rc.right - rc.left));
+    const float height = static_cast<float>(std::max<LONG>(1, rc.bottom - rc.top));
+    const int activeLightCount = std::clamp(m_DeferredPointLightCount, 0, static_cast<int>(std::min<size_t>(m_DeferredPointLights.size(), DEFERRED_MAX_POINT_LIGHTS)));
+
+    D3D11_MAPPED_SUBRESOURCE mapped = {};
+    if (SUCCEEDED(m_pDeviceContext->Map(m_pDeferredFrameBuffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped)))
+    {
+        DeferredLightingFrameCB* cb = reinterpret_cast<DeferredLightingFrameCB*>(mapped.pData);
+        cb->InvViewProj = XMMatrixTranspose(XMMatrixInverse(nullptr, viewProj));
+        cb->CameraPositionLightCount = XMFLOAT4(
+            m_CameraPosition.x,
+            m_CameraPosition.y,
+            m_CameraPosition.z,
+            static_cast<float>(activeLightCount)
+        );
+        cb->ScreenSizeParams = XMFLOAT4(width, height, 1.0f / width, 1.0f / height);
+        cb->DirectionalLight = XMFLOAT4(
+            m_ShadowLightDirection.x,
+            m_ShadowLightDirection.y,
+            m_ShadowLightDirection.z,
+            m_LightBrightness[0] * 1.8f
+        );
+        cb->IBLParams = XMFLOAT4(
+            m_EnableSpecularIBL ? 1.0f : 0.0f,
+            m_DiffuseIBLIntensity,
+            m_SpecularIBLIntensity,
+            m_EnableSSAO ? 1.0f : 0.0f
+        );
+        m_pDeviceContext->Unmap(m_pDeferredFrameBuffer, 0);
+    }
+
+    ID3D11ShaderResourceView* nullSRVs[12] = {};
+    m_pDeviceContext->PSSetShaderResources(0, 12, nullSRVs);
+    ID3D11ShaderResourceView* srvs[10] =
+    {
+        m_pGBufferAlbedoSRV,
+        m_pGBufferMaterialSRV,
+        m_pNormalSRV,
+        m_pGBufferEmissiveSRV,
+        m_pDepthSRV,
+        m_pSSAOSRV,
+        m_pShadowMapSRV,
+        m_pIrradianceSRV,
+        m_pPrefilteredEnvSRV,
+        m_pBRDFLUTSRV
+    };
+
+    m_pDeviceContext->PSSetShaderResources(0, 10, srvs);
+    m_pDeviceContext->PSSetSamplers(0, 1, &m_pSamplerState);
+    m_pDeviceContext->PSSetSamplers(2, 1, &m_pShadowSampler);
+    m_pDeviceContext->PSSetConstantBuffers(0, 1, &m_pDeferredFrameBuffer);
+    m_pDeviceContext->PSSetConstantBuffers(1, 1, &m_pVPBuffer);
+    m_pDeviceContext->PSSetConstantBuffers(4, 1, &m_pShadowParamsBuffer);
+    m_pDeviceContext->PSSetConstantBuffers(5, 1, &m_pShadowLightBuffer);
+    m_pDeviceContext->OMSetRenderTargets(1, &targetRTV, m_pDepthReadOnlyView ? m_pDepthReadOnlyView : m_pDepthView);
+
+    D3D11_VIEWPORT vp = {};
+    vp.Width = width;
+    vp.Height = height;
+    vp.MinDepth = 0.0f;
+    vp.MaxDepth = 1.0f;
+    vp.TopLeftX = 0.0f;
+    vp.TopLeftY = 0.0f;
+    m_pDeviceContext->RSSetViewports(1, &vp);
+
+    RenderDeferredDirectionalLighting();
+    RenderDeferredPointLighting(viewProj);
+
+    m_pDeviceContext->PSSetShaderResources(0, 12, nullSRVs);
+    ID3D11Buffer* nullCBs[7] = {};
+    m_pDeviceContext->PSSetConstantBuffers(0, 7, nullCBs);
+    float blendFactor[4] = { 0, 0, 0, 0 };
+    m_pDeviceContext->OMSetBlendState(nullptr, blendFactor, 0xffffffff);
+    m_pDeviceContext->OMSetDepthStencilState(nullptr, 0);
+    m_pDeviceContext->RSSetState(nullptr);
+}
+
+void RenderClass::RenderDeferredDirectionalLighting()
+{
+    D3D11_MAPPED_SUBRESOURCE mapped = {};
+    if (SUCCEEDED(m_pDeviceContext->Map(m_pDeferredLightBuffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped)))
+    {
+        DeferredLightingLightCB* cb = reinterpret_cast<DeferredLightingLightCB*>(mapped.pData);
+        cb->PositionRange = XMFLOAT4(0.0f, 0.0f, 0.0f, 0.0f);
+        cb->ColorIntensity = XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f);
+        cb->Params = XMFLOAT4(0.0f, m_ShowCascadeSplitColors ? 1.0f : 0.0f, 0.0f, 0.0f);
+        m_pDeviceContext->Unmap(m_pDeferredLightBuffer, 0);
+    }
+
+    UINT stride = sizeof(FullScreenVertex);
+    UINT offset = 0;
+    m_pDeviceContext->IASetVertexBuffers(0, 1, &m_pFullScreenQuadVB, &stride, &offset);
+    m_pDeviceContext->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLESTRIP);
+    m_pDeviceContext->IASetInputLayout(m_pFullScreenLayout);
+    m_pDeviceContext->VSSetShader(m_pFullScreenVS, nullptr, 0);
+    m_pDeviceContext->PSSetShader(m_pDeferredLightingPS, nullptr, 0);
+    m_pDeviceContext->PSSetConstantBuffers(6, 1, &m_pDeferredLightBuffer);
+    m_pDeviceContext->OMSetDepthStencilState(m_pDeferredLightingDepthOffState, 0);
+    float blendFactor[4] = { 0, 0, 0, 0 };
+    m_pDeviceContext->OMSetBlendState(nullptr, blendFactor, 0xffffffff);
+    m_pDeviceContext->Draw(4, 0);
+}
+
+void RenderClass::RenderDeferredPointLighting(const XMMATRIX& viewProj)
+{
+    if (!m_pVertexBuffer || !m_pIndexBuffer || m_indexCount == 0)
+        return;
+
+    const int activeLightCount = std::clamp(m_DeferredPointLightCount, 0, static_cast<int>(std::min<size_t>(m_DeferredPointLights.size(), DEFERRED_MAX_POINT_LIGHTS)));
+    if (activeLightCount <= 0)
+        return;
+
+    UINT stride = sizeof(CubeVertex);
+    UINT offset = 0;
+    m_pDeviceContext->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+    m_pDeviceContext->IASetInputLayout(m_pLayout);
+    m_pDeviceContext->IASetVertexBuffers(0, 1, &m_pVertexBuffer, &stride, &offset);
+    m_pDeviceContext->IASetIndexBuffer(m_pIndexBuffer, DXGI_FORMAT_R16_UINT, 0);
+    m_pDeviceContext->VSSetShader(m_pGBufferVS, nullptr, 0);
+    m_pDeviceContext->PSSetShader(m_pDeferredLightingPS, nullptr, 0);
+    m_pDeviceContext->VSSetConstantBuffers(1, 1, &m_pVPBuffer);
+    m_pDeviceContext->PSSetConstantBuffers(6, 1, &m_pDeferredLightBuffer);
+    m_pDeviceContext->RSSetState(m_pPointLightRasterState);
+    m_pDeviceContext->OMSetDepthStencilState(m_pPointLightDepthState, 0);
+    float blendFactor[4] = { 0, 0, 0, 0 };
+    m_pDeviceContext->OMSetBlendState(m_pAdditiveBlendState, blendFactor, 0xffffffff);
+
+    const float range = std::max(0.1f, m_DeferredLightRadius);
+
+    for (int i = 0; i < activeLightCount; ++i)
+    {
+        const DeferredPointLightData& light = m_DeferredPointLights[i];
+        const float intensity = light.Intensity * std::max(0.0f, m_DeferredLightIntensityScale);
+        if (intensity <= 0.0001f)
+            continue;
+
+        XMMATRIX world =
+            XMMatrixScaling(range, range, range) *
+            XMMatrixTranslation(light.Position.x, light.Position.y, light.Position.z);
+        XMMATRIX worldT = XMMatrixTranspose(world);
+        m_pDeviceContext->UpdateSubresource(m_pModelBuffer, 0, nullptr, &worldT, 0, 0);
+        m_pDeviceContext->VSSetConstantBuffers(0, 1, &m_pModelBuffer);
+
+        D3D11_MAPPED_SUBRESOURCE mapped = {};
+        if (SUCCEEDED(m_pDeviceContext->Map(m_pDeferredLightBuffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped)))
+        {
+            DeferredLightingLightCB* cb = reinterpret_cast<DeferredLightingLightCB*>(mapped.pData);
+            cb->PositionRange = XMFLOAT4(light.Position.x, light.Position.y, light.Position.z, range);
+            cb->ColorIntensity = XMFLOAT4(light.Color.x, light.Color.y, light.Color.z, intensity);
+            cb->Params = XMFLOAT4(1.0f, 0.0f, 0.0f, 0.0f);
+            m_pDeviceContext->Unmap(m_pDeferredLightBuffer, 0);
+        }
+
+        m_pDeviceContext->DrawIndexed(m_indexCount, 0, 0);
+    }
+
+    m_pDeviceContext->OMSetBlendState(nullptr, blendFactor, 0xffffffff);
+    m_pDeviceContext->OMSetDepthStencilState(nullptr, 0);
+    m_pDeviceContext->RSSetState(nullptr);
 }
 
 // light
@@ -4917,6 +5270,12 @@ void RenderClass::Resize(HWND hWnd)
         m_pDepthView = nullptr;
     }
 
+    if (m_pDepthReadOnlyView)
+    {
+        m_pDepthReadOnlyView->Release();
+        m_pDepthReadOnlyView = nullptr;
+    }
+
     if (m_pDepthTexture)
     {
         m_pDepthTexture->Release();
@@ -5248,7 +5607,8 @@ void RenderClass::RenderImGui()
         "Ground normal map markers",
         "GBuffer albedo",
         "GBuffer material",
-        "GBuffer emissive"
+        "GBuffer emissive",
+        "Deferred lighting"
     };
  
     ImGui::Combo("View mode", &m_DebugViewMode, debugModes, IM_ARRAYSIZE(debugModes));
@@ -5299,6 +5659,12 @@ void RenderClass::RenderImGui()
     }
     ImGui::SliderFloat("Intensity", &m_LightBrightness[0], 0.0f, 2.0f, "%.2f");
     ImGui::SliderFloat("Shadow strength", &m_ShadowStrength, 0.0f, 1.0f, "%.2f");
+    ImGui::Separator();
+
+    ImGui::TextUnformatted("Deferred point lights");
+    ImGui::SliderInt("Active point lights", &m_DeferredPointLightCount, 0, static_cast<int>(DEFERRED_MAX_POINT_LIGHTS));
+    ImGui::SliderFloat("Point light radius", &m_DeferredLightRadius, 1.0f, 40.0f, "%.1f");
+    ImGui::SliderFloat("Point light intensity", &m_DeferredLightIntensityScale, 0.0f, 5.0f, "%.2f");
     ImGui::Separator();
 
     ImGui::TextUnformatted("SSAO");
