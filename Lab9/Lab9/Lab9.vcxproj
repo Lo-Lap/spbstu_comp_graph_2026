@@ -192,7 +192,53 @@
       <DestinationFolders Condition="'$(Configuration)|$(Platform)'=='Release|x64'">$(OutDir)/cubemaps</DestinationFolders>
     </CopyFileToFolders>
     <Image Include="Lab9.ico" />
+    <CopyFileToFolders Include="models\bunny\bunny1_face_body.jpg">
+      <DestinationFolders Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">$(OutDir)/models/bunny</DestinationFolders>
+      <DestinationFolders Condition="'$(Configuration)|$(Platform)'=='Release|x64'">$(OutDir)/models/bunny</DestinationFolders>
+    </CopyFileToFolders>
+    <CopyFileToFolders Include="models\bunny\bunny1_scraf.jpg">
+      <DestinationFolders Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">$(OutDir)/models/bunny</DestinationFolders>
+      <DestinationFolders Condition="'$(Configuration)|$(Platform)'=='Release|x64'">$(OutDir)/models/bunny</DestinationFolders>
+    </CopyFileToFolders>
+    <CopyFileToFolders Include="models\bunny\bunny2_face_body.jpg">
+      <DestinationFolders Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">$(OutDir)/models/bunny</DestinationFolders>
+      <DestinationFolders Condition="'$(Configuration)|$(Platform)'=='Release|x64'">$(OutDir)/models/bunny</DestinationFolders>
+    </CopyFileToFolders>
+    <CopyFileToFolders Include="models\bunny\bunny2_scraf.jpg">
+      <DestinationFolders Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">$(OutDir)/models/bunny</DestinationFolders>
+      <DestinationFolders Condition="'$(Configuration)|$(Platform)'=='Release|x64'">$(OutDir)/models/bunny</DestinationFolders>
+    </CopyFileToFolders>
+    <CopyFileToFolders Include="models\cakepop\Cake_Pop_bcolor.png">
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">false</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">false</ExcludedFromBuild>
+      <DestinationFolders Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">$(OutDir)/models/cakepop</DestinationFolders>
+      <DestinationFolders Condition="'$(Configuration)|$(Platform)'=='Release|x64'">$(OutDir)/models/cakepop</DestinationFolders>
+    </CopyFileToFolders>
+    <CopyFileToFolders Include="models\cakepop\Cake_Pop_metal-Cake_Pop_rough.png">
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">false</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">false</ExcludedFromBuild>
+      <DestinationFolders Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">$(OutDir)/models/cakepop</DestinationFolders>
+      <DestinationFolders Condition="'$(Configuration)|$(Platform)'=='Release|x64'">$(OutDir)/models/cakepop</DestinationFolders>
+    </CopyFileToFolders>
+    <CopyFileToFolders Include="models\cakepop\Cake_Pop_norm.png">
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">false</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">false</ExcludedFromBuild>
+      <DestinationFolders Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">$(OutDir)/models/cakepop</DestinationFolders>
+      <DestinationFolders Condition="'$(Configuration)|$(Platform)'=='Release|x64'">$(OutDir)/models/cakepop</DestinationFolders>
+    </CopyFileToFolders>
+    <Image Include="models\columns\Mable2_bColor.png" />
+    <Image Include="models\columns\Mable2_Metallic-Mable2_Roughness.png" />
+    <Image Include="models\columns\Mable2_Normal.png" />
+    <Image Include="models\columns\Marble1_bcolor.png" />
+    <Image Include="models\columns\Marble1_Metallic-Marble1_Roughness.png" />
+    <Image Include="models\columns\Marble1_Normal.png" />
     <CopyFileToFolders Include="models\penguin\Penguin_Albedo.png">
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">false</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">false</ExcludedFromBuild>
+      <DestinationFolders Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">$(OutDir)/models/penguin</DestinationFolders>
+      <DestinationFolders Condition="'$(Configuration)|$(Platform)'=='Release|x64'">$(OutDir)/models/penguin</DestinationFolders>
+    </CopyFileToFolders>
+    <CopyFileToFolders Include="models\penguin\Penguin_Metalness-Penguin_Roughness.png">
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">false</ExcludedFromBuild>
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">false</ExcludedFromBuild>
       <DestinationFolders Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">$(OutDir)/models/penguin</DestinationFolders>
@@ -210,40 +256,6 @@
       <DestinationFolders Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">$(OutDir)/models/penguin</DestinationFolders>
       <DestinationFolders Condition="'$(Configuration)|$(Platform)'=='Release|x64'">$(OutDir)/models/penguin</DestinationFolders>
     </CopyFileToFolders>
-    <CopyFileToFolders Include="models\bunny\bunny1_face_body.jpg">
-      <DestinationFolders Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">$(OutDir)/models/bunny</DestinationFolders>
-      <DestinationFolders Condition="'$(Configuration)|$(Platform)'=='Release|x64'">$(OutDir)/models/bunny</DestinationFolders>
-    </CopyFileToFolders>
-    <CopyFileToFolders Include="models\bunny\bunny1_scraf.jpg">
-      <DestinationFolders Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">$(OutDir)/models/bunny</DestinationFolders>
-      <DestinationFolders Condition="'$(Configuration)|$(Platform)'=='Release|x64'">$(OutDir)/models/bunny</DestinationFolders>
-    </CopyFileToFolders>
-    <CopyFileToFolders Include="models\bunny\bunny2_face_body.jpg">
-      <DestinationFolders Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">$(OutDir)/models/bunny</DestinationFolders>
-      <DestinationFolders Condition="'$(Configuration)|$(Platform)'=='Release|x64'">$(OutDir)/models/bunny</DestinationFolders>
-    </CopyFileToFolders>
-    <CopyFileToFolders Include="models\bunny\bunny2_scraf.jpg">
-      <DestinationFolders Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">$(OutDir)/models/bunny</DestinationFolders>
-      <DestinationFolders Condition="'$(Configuration)|$(Platform)'=='Release|x64'">$(OutDir)/models/bunny</DestinationFolders>
-    </CopyFileToFolders>
-    <CopyFileToFolders Include="models\cakepop\Cake_Pop_ao-Cake_Pop_rough-Cake_Pop_metal.png">
-      <DestinationFolders Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">$(OutDir)/models/cakepop</DestinationFolders>
-      <DestinationFolders Condition="'$(Configuration)|$(Platform)'=='Release|x64'">$(OutDir)/models/cakepop</DestinationFolders>
-    </CopyFileToFolders>
-    <CopyFileToFolders Include="models\cakepop\Cake_Pop_bcolor.png">
-      <DestinationFolders Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">$(OutDir)/models/cakepop</DestinationFolders>
-      <DestinationFolders Condition="'$(Configuration)|$(Platform)'=='Release|x64'">$(OutDir)/models/cakepop</DestinationFolders>
-    </CopyFileToFolders>
-    <CopyFileToFolders Include="models\cakepop\Cake_Pop_norm.png">
-      <DestinationFolders Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">$(OutDir)/models/cakepop</DestinationFolders>
-      <DestinationFolders Condition="'$(Configuration)|$(Platform)'=='Release|x64'">$(OutDir)/models/cakepop</DestinationFolders>
-    </CopyFileToFolders>
-    <Image Include="models\columns\Mable2_bColor.png" />
-    <Image Include="models\columns\Mable2_Metallic-Mable2_Roughness.png" />
-    <Image Include="models\columns\Mable2_Normal.png" />
-    <Image Include="models\columns\Marble1_bcolor.png" />
-    <Image Include="models\columns\Marble1_Metallic-Marble1_Roughness.png" />
-    <Image Include="models\columns\Marble1_Normal.png" />
     <Image Include="small.ico" />
     <CopyFileToFolders Include="textures\bark_brown_02_diff_4k.dds">
       <DestinationFolders Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">$(OutDir)/textures</DestinationFolders>
@@ -408,7 +420,19 @@
       <FileType>Document</FileType>
     </CopyFileToFolders>
     <CopyFileToFolders Include="DeferredLighting.ps">
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">false</ExcludedFromBuild>
       <FileType>Document</FileType>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">false</ExcludedFromBuild>
+    </CopyFileToFolders>
+    <CopyFileToFolders Include="GBufferPixel.ps">
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">false</ExcludedFromBuild>
+      <FileType>Document</FileType>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">false</ExcludedFromBuild>
+    </CopyFileToFolders>
+    <CopyFileToFolders Include="GBufferVertex.vs">
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">false</ExcludedFromBuild>
+      <FileType>Document</FileType>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">false</ExcludedFromBuild>
     </CopyFileToFolders>
     <None Include="imgui\imgui.vcxproj" />
     <None Include="imgui\imgui.vcxproj.filters" />
@@ -433,20 +457,6 @@
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">false</ExcludedFromBuild>
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">false</ExcludedFromBuild>
     </CopyFileToFolders>
-    <CopyFileToFolders Include="models\penguin\penguin.bin">
-      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">false</ExcludedFromBuild>
-      <FileType>Document</FileType>
-      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">false</ExcludedFromBuild>
-      <DestinationFolders Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">$(OutDir)/models/penguin</DestinationFolders>
-      <DestinationFolders Condition="'$(Configuration)|$(Platform)'=='Release|x64'">$(OutDir)/models/penguin</DestinationFolders>
-    </CopyFileToFolders>
-    <CopyFileToFolders Include="models\penguin\penguin.gltf">
-      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">false</ExcludedFromBuild>
-      <FileType>Document</FileType>
-      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">false</ExcludedFromBuild>
-      <DestinationFolders Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">$(OutDir)/models/penguin</DestinationFolders>
-      <DestinationFolders Condition="'$(Configuration)|$(Platform)'=='Release|x64'">$(OutDir)/models/penguin</DestinationFolders>
-    </CopyFileToFolders>
     <CopyFileToFolders Include="models\bunny\bunny_blend.bin">
       <FileType>Document</FileType>
       <DestinationFolders Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">$(OutDir)/models/bunny</DestinationFolders>
@@ -463,12 +473,16 @@
       <DestinationFolders Condition="'$(Configuration)|$(Platform)'=='Release|x64'">$(OutDir)/models/bunny</DestinationFolders>
     </CopyFileToFolders>
     <CopyFileToFolders Include="models\cakepop\Cake_ Pop.bin">
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">false</ExcludedFromBuild>
       <FileType>Document</FileType>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">false</ExcludedFromBuild>
       <DestinationFolders Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">$(OutDir)/models/cakepop</DestinationFolders>
       <DestinationFolders Condition="'$(Configuration)|$(Platform)'=='Release|x64'">$(OutDir)/models/cakepop</DestinationFolders>
     </CopyFileToFolders>
     <CopyFileToFolders Include="models\cakepop\Cake_ Pop.gltf">
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">false</ExcludedFromBuild>
       <FileType>Document</FileType>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">false</ExcludedFromBuild>
       <DestinationFolders Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">$(OutDir)/models/cakepop</DestinationFolders>
       <DestinationFolders Condition="'$(Configuration)|$(Platform)'=='Release|x64'">$(OutDir)/models/cakepop</DestinationFolders>
     </CopyFileToFolders>
@@ -492,6 +506,27 @@
     </CopyFileToFolders>
     <CopyFileToFolders Include="SSAO.ps">
       <FileType>Document</FileType>
+    </CopyFileToFolders>
+    <CopyFileToFolders Include="models\penguin\penguin.bin">
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">false</ExcludedFromBuild>
+      <FileType>Document</FileType>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">false</ExcludedFromBuild>
+      <DestinationFolders Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">$(OutDir)/models/penguin</DestinationFolders>
+      <DestinationFolders Condition="'$(Configuration)|$(Platform)'=='Release|x64'">$(OutDir)/models/penguin</DestinationFolders>
+    </CopyFileToFolders>
+    <CopyFileToFolders Include="models\penguin\penguin.blend">
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">false</ExcludedFromBuild>
+      <FileType>Document</FileType>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">false</ExcludedFromBuild>
+      <DestinationFolders Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">$(OutDir)/models/penguin</DestinationFolders>
+      <DestinationFolders Condition="'$(Configuration)|$(Platform)'=='Release|x64'">$(OutDir)/models/penguin</DestinationFolders>
+    </CopyFileToFolders>
+    <CopyFileToFolders Include="models\penguin\penguin.gltf">
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">false</ExcludedFromBuild>
+      <FileType>Document</FileType>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">false</ExcludedFromBuild>
+      <DestinationFolders Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">$(OutDir)/models/penguin</DestinationFolders>
+      <DestinationFolders Condition="'$(Configuration)|$(Platform)'=='Release|x64'">$(OutDir)/models/penguin</DestinationFolders>
     </CopyFileToFolders>
   </ItemGroup>
   <ItemGroup>

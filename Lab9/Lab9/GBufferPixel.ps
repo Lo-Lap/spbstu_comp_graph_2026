@@ -86,7 +86,7 @@ PS_OUTPUT main(PS_INPUT input)
     PS_OUTPUT output;
     output.Albedo = float4(saturate(baseColor.rgb), baseColor.a);
     output.Material = float4(0.04f, metallic, roughness, ao);
-    output.Normal = float4(normal * 0.5f + 0.5f, 1.0f);
+    output.Normal = float4(normal * 0.5f + 0.5f, saturate(Extra.w));
     output.Emissive = float4(emissive, max(max(emissive.r, emissive.g), emissive.b));
     return output;
 }

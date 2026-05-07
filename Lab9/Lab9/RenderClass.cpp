@@ -1,4 +1,4 @@
-﻿#include "framework.h"
+#include "framework.h"
 #include "RenderClass.h"
 #include "DDSTextureLoader11.h"
 
@@ -2029,9 +2029,6 @@ void RenderClass::Render()
 
     ScopedEvent frameEvent(m_pAnnotation, L"Frame");
 
-
-    ScopedEvent evt(m_pAnnotation, L"Clear");
-
     RECT rc;
     GetClientRect(FindWindow(m_szWindowClass, m_szTitle), &rc);
     float aspect = static_cast<float>(rc.right - rc.left) / (rc.bottom - rc.top);
@@ -2052,35 +2049,23 @@ void RenderClass::Render()
     UpdateShadowLightDirectionFromAngles();
     UpdateCascadedShadowData(cameraView, cameraProj);
 
-    ID3D11RenderTargetView* sceneRTV = (m_DebugViewMode == DebugView_Final) ? m_pHDRSceneRTV : m_pRenderTargetView;
-    m_pDeviceContext->OMSetRenderTargets(1, &sceneRTV, m_pDepthView);
-
-
-    float hdrClear[4] = { 0, 0, 0, 0 };
-    if (m_DebugViewMode == DebugView_Final)
-    {
-        float BackColor[4] = { 0.48f, 0.57f, 0.48f, 1.0f };
-        m_pDeviceContext->ClearRenderTargetView(m_pRenderTargetView, BackColor);
-
-        if (m_pHDRSceneRTV)
-            m_pDeviceContext->ClearRenderTargetView(m_pHDRSceneRTV, hdrClear);
-    }
-    else
-    {
-        m_pDeviceContext->ClearRenderTargetView(m_pRenderTargetView, hdrClear);
-    }
-    m_pDeviceContext->ClearDepthStencilView(m_pDepthView, D3D11_CLEAR_DEPTH, 1.0f, 0);
-
     D3D11_VIEWPORT vp = {};
     vp.Width = (FLOAT)(rc.right - rc.left);
     vp.Height = (FLOAT)(rc.bottom - rc.top);
     vp.MinDepth = 0.0f;
     vp.MaxDepth = 1.0f;
+    vp.TopLeftX = 0.0f;
+    vp.TopLeftY = 0.0f;
     m_pDeviceContext->RSSetViewports(1, &vp);
+
+    float backClear[4] = { 0.0f, 0.0f, 0.0f, 1.0f };
+    float hdrClear[4] = { 0.0f, 0.0f, 0.0f, 0.0f };
+    m_pDeviceContext->ClearRenderTargetView(m_pRenderTargetView, backClear);
+    if (m_pHDRSceneRTV)
+        m_pDeviceContext->ClearRenderTargetView(m_pHDRSceneRTV, hdrClear);
+
     RenderCascadedShadowPass();
 
-    sceneRTV = (m_DebugViewMode == DebugView_Final) ? m_pHDRSceneRTV : m_pRenderTargetView;
-    m_pDeviceContext->OMSetRenderTargets(1, &sceneRTV, m_pDepthView);
     vp.Width = (FLOAT)(rc.right - rc.left);
     vp.Height = (FLOAT)(rc.bottom - rc.top);
     vp.MinDepth = 0.0f;
@@ -2094,35 +2079,21 @@ void RenderClass::Render()
     RenderGBufferPass(viewProj);
     RenderSSAO(cameraView, cameraProj);
 
-
-    if (m_DebugViewMode == DebugView_DeferredLighting)
-    {
-        ID3D11RenderTargetView* debugRTV = m_pRenderTargetView;
-        m_pDeviceContext->OMSetRenderTargets(1, &debugRTV, m_pDepthView);
-        float debugClear[4] = { 0, 0, 0, 1 };
-        m_pDeviceContext->ClearRenderTargetView(debugRTV, debugClear);
-        RenderDeferredLighting(viewProj, debugRTV);
-        RenderImGui();
-        m_pSwapChain->Present(1, 0);
-        return;
-    }
-
     if (IsFullScreenDebugView())
     {
         ID3D11RenderTargetView* debugRTV = m_pRenderTargetView;
         m_pDeviceContext->OMSetRenderTargets(1, &debugRTV, nullptr);
-        float debugClear[4] = { 0, 0, 0, 1 };
-        m_pDeviceContext->ClearRenderTargetView(debugRTV, debugClear);
+        m_pDeviceContext->ClearRenderTargetView(debugRTV, backClear);
 
         if (m_DebugViewMode == DebugView_SSAO)
             RenderDebugTexture(m_pSSAOSRV, 0);
-        else if (m_DebugViewMode == DebugView_NormalBuffer)
+        else if (m_DebugViewMode == DebugView_GBufferNormals)
             RenderDebugTexture(m_pNormalSRV, 1);
         else if (m_DebugViewMode == DebugView_DepthBuffer)
             RenderDebugTexture(m_pDepthSRV, 2);
-        else if (m_DebugViewMode == DebugView_GBufferAlbedo)
+        else if (m_DebugViewMode == DebugView_GBufferColor)
             RenderDebugTexture(m_pGBufferAlbedoSRV, 3);
-        else if (m_DebugViewMode == DebugView_GBufferMaterial)
+        else if (m_DebugViewMode == DebugView_GBufferRoughness)
             RenderDebugTexture(m_pGBufferMaterialSRV, 4);
         else if (m_DebugViewMode == DebugView_GBufferEmissive)
             RenderDebugTexture(m_pGBufferEmissiveSRV, 5);
@@ -2132,22 +2103,29 @@ void RenderClass::Render()
         return;
     }
 
+    const bool finalView = m_DebugViewMode == DebugView_Final;
+    ID3D11RenderTargetView* sceneRTV = finalView ? m_pHDRSceneRTV : m_pRenderTargetView;
+    if (!sceneRTV)
+        sceneRTV = m_pRenderTargetView;
 
-    sceneRTV = (m_DebugViewMode == DebugView_Final) ? m_pHDRSceneRTV : m_pRenderTargetView;
     m_pDeviceContext->OMSetRenderTargets(1, &sceneRTV, m_pDepthView);
-    m_pDeviceContext->ClearDepthStencilView(m_pDepthView, D3D11_CLEAR_DEPTH, 1.0f, 0);
+    if (finalView && m_pHDRSceneRTV)
+        m_pDeviceContext->ClearRenderTargetView(m_pHDRSceneRTV, hdrClear);
+    else
+        m_pDeviceContext->ClearRenderTargetView(sceneRTV, backClear);
 
     RenderSkybox(viewProj);
+    RenderDeferredLighting(viewProj, sceneRTV);
 
-    RenderGroundPlane(viewProj);
-    RenderAllSceneModels(viewProj);
+    if (!finalView)
+    {
+        RenderImGui();
+        m_pSwapChain->Present(1, 0);
+        return;
+    }
 
-    //RenderLightSources(viewProj);
+    ApplyBloom();
 
-    if (m_DebugViewMode == DebugView_Final)
-        ApplyBloom();
-
-    if (m_DebugViewMode == DebugView_Final)
     {
         ScopedEvent evt(m_pAnnotation, L"Luminance Calculation");
         CalculateAverageLuminance();
@@ -2164,7 +2142,7 @@ void RenderClass::Render()
 
         ULONGLONG now = GetTickCount64();
         float dt = (m_LastFrameTime == 0) ? (1.0f / 60.0f)
-            : float(now - m_LastFrameTime) / 10.0f;
+            : float(now - m_LastFrameTime) / 1000.0f;
         m_LastFrameTime = now;
 
         if (dt > 0.1f) dt = 0.1f;
@@ -2176,7 +2154,6 @@ void RenderClass::Render()
         m_AdaptedLuminance += (m_CurrentLuminance - m_AdaptedLuminance) * k;
     }
 
-    if (m_DebugViewMode == DebugView_Final)
     {
         ScopedEvent evt(m_pAnnotation, L"Apply tone mapping");
         ApplyToneMapping();
@@ -2838,10 +2815,10 @@ void RenderClass::RenderSSAO(const XMMATRIX& cameraView, const XMMATRIX& cameraP
 bool RenderClass::IsFullScreenDebugView() const
 {
     return m_DebugViewMode == DebugView_SSAO ||
-        m_DebugViewMode == DebugView_NormalBuffer ||
+        m_DebugViewMode == DebugView_GBufferNormals ||
         m_DebugViewMode == DebugView_DepthBuffer ||
-        m_DebugViewMode == DebugView_GBufferAlbedo ||
-        m_DebugViewMode == DebugView_GBufferMaterial ||
+        m_DebugViewMode == DebugView_GBufferColor ||
+        m_DebugViewMode == DebugView_GBufferRoughness ||
         m_DebugViewMode == DebugView_GBufferEmissive;
 }
 
@@ -2970,7 +2947,7 @@ void RenderClass::RenderGroundPlaneGBuffer()
     materialParams.Albedo = XMFLOAT4(0.34f, 0.34f, 0.33f, 1.0f);
     materialParams.DebugView = XMFLOAT4(0.0f, 0.0f, 0.0f, 0.0f);
     materialParams.Emissive = XMFLOAT4(0.0f, 0.0f, 0.0f, 0.0f);
-    materialParams.Extra = XMFLOAT4(0.0f, 0.0f, 0.0f, 0.0f);
+    materialParams.Extra = XMFLOAT4(0.0f, 0.0f, 0.0f, 1.0f);
     materialParams.AlphaParams = XMFLOAT4(0.0f, 1.0f, 0.5f, 0.0f);
     materialParams.TextureFlags = XMFLOAT4(
         m_pTextureViews[3] ? 1.0f : 0.0f,
@@ -3317,6 +3294,7 @@ void RenderClass::RenderDeferredLighting(const XMMATRIX& viewProj, ID3D11RenderT
         m_pBRDFLUTSRV
     };
 
+    m_pDeviceContext->OMSetRenderTargets(1, &targetRTV, m_pDepthReadOnlyView ? m_pDepthReadOnlyView : m_pDepthView);
     m_pDeviceContext->PSSetShaderResources(0, 10, srvs);
     m_pDeviceContext->PSSetSamplers(0, 1, &m_pSamplerState);
     m_pDeviceContext->PSSetSamplers(2, 1, &m_pShadowSampler);
@@ -3324,7 +3302,6 @@ void RenderClass::RenderDeferredLighting(const XMMATRIX& viewProj, ID3D11RenderT
     m_pDeviceContext->PSSetConstantBuffers(1, 1, &m_pVPBuffer);
     m_pDeviceContext->PSSetConstantBuffers(4, 1, &m_pShadowParamsBuffer);
     m_pDeviceContext->PSSetConstantBuffers(5, 1, &m_pShadowLightBuffer);
-    m_pDeviceContext->OMSetRenderTargets(1, &targetRTV, m_pDepthReadOnlyView ? m_pDepthReadOnlyView : m_pDepthView);
 
     D3D11_VIEWPORT vp = {};
     vp.Width = width;
@@ -3336,7 +3313,9 @@ void RenderClass::RenderDeferredLighting(const XMMATRIX& viewProj, ID3D11RenderT
     m_pDeviceContext->RSSetViewports(1, &vp);
 
     RenderDeferredDirectionalLighting();
-    RenderDeferredPointLighting(viewProj);
+
+    if (m_DebugViewMode == DebugView_Final || m_DebugViewMode == DebugView_DeferredLighting)
+        RenderDeferredPointLighting(viewProj);
 
     m_pDeviceContext->PSSetShaderResources(0, 12, nullSRVs);
     ID3D11Buffer* nullCBs[7] = {};
@@ -3355,7 +3334,12 @@ void RenderClass::RenderDeferredDirectionalLighting()
         DeferredLightingLightCB* cb = reinterpret_cast<DeferredLightingLightCB*>(mapped.pData);
         cb->PositionRange = XMFLOAT4(0.0f, 0.0f, 0.0f, 0.0f);
         cb->ColorIntensity = XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f);
-        cb->Params = XMFLOAT4(0.0f, m_ShowCascadeSplitColors ? 1.0f : 0.0f, 0.0f, 0.0f);
+        cb->Params = XMFLOAT4(
+            0.0f,
+            m_ShowCascadeSplitColors ? 1.0f : 0.0f,
+            static_cast<float>(m_DebugViewMode),
+            0.0f
+        );
         m_pDeviceContext->Unmap(m_pDeferredLightBuffer, 0);
     }
 
@@ -3419,7 +3403,7 @@ void RenderClass::RenderDeferredPointLighting(const XMMATRIX& viewProj)
             DeferredLightingLightCB* cb = reinterpret_cast<DeferredLightingLightCB*>(mapped.pData);
             cb->PositionRange = XMFLOAT4(light.Position.x, light.Position.y, light.Position.z, range);
             cb->ColorIntensity = XMFLOAT4(light.Color.x, light.Color.y, light.Color.z, intensity);
-            cb->Params = XMFLOAT4(1.0f, 0.0f, 0.0f, 0.0f);
+            cb->Params = XMFLOAT4(1.0f, m_ShowCascadeSplitColors ? 1.0f : 0.0f, 0.0f, 0.0f);
             m_pDeviceContext->Unmap(m_pDeferredLightBuffer, 0);
         }
 
@@ -5602,12 +5586,12 @@ void RenderClass::RenderImGui()
         "Ambient IBL",
         "Reflection only",
         "SSAO mask",
-        "Normal buffer",
         "Depth buffer",
         "Ground normal map markers",
-        "GBuffer albedo",
-        "GBuffer material",
-        "GBuffer emissive",
+        "GBuffer Color",
+        "GBuffer Roughness",
+        "GBuffer Normals",
+        "GBuffer Emissive",
         "Deferred lighting"
     };
  
@@ -5640,12 +5624,12 @@ void RenderClass::RenderImGui()
     //ImGui::SliderFloat("Adaptation time", &m_EyeAdaptationTime, 0.05f, 5.0f);
     //ImGui::Separator();
 
-    ImGui::TextUnformatted("Bloom");
-    ImGui::Checkbox("Enable bloom", &m_EnableBloom);
-    ImGui::SliderFloat("Threshold", &m_BloomThreshold, 0.1f, 10.0f);
-    ImGui::SliderFloat("Blur intensity", &m_BloomIntensity, 0.0f, 3.0f);
-    ImGui::SliderFloat("Blur scale", &m_BloomBlurScale, 0.5f, 3.0f);
-    ImGui::Separator();
+    //ImGui::TextUnformatted("Bloom");
+    //ImGui::Checkbox("Enable bloom", &m_EnableBloom);
+    //ImGui::SliderFloat("Threshold", &m_BloomThreshold, 0.1f, 10.0f);
+    //ImGui::SliderFloat("Blur intensity", &m_BloomIntensity, 0.0f, 3.0f);
+    //ImGui::SliderFloat("Blur scale", &m_BloomBlurScale, 0.5f, 3.0f);
+    //ImGui::Separator();
 
     ImGui::TextUnformatted("Directional light");
     ImGui::Checkbox("Show cascade split colors", &m_ShowCascadeSplitColors);

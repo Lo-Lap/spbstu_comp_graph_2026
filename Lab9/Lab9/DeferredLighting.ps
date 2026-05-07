@@ -261,22 +261,27 @@ float3 CalculateBRDF(float3 albedo, float metallic, float roughness, float3 F0, 
     return (diffuse + specular) * radiance * NdotL;
 }
 
-float3 CalculateAmbient(float3 albedo, float metallic, float roughness, float ao, float3 N, float3 V, float ssao)
+float3 GetCascadeDebugColor(int cascade)
 {
-    float3 F0 = lerp(float3(0.04f, 0.04f, 0.04f), albedo, metallic);
-    float NdotV = saturate(dot(N, V));
-    float3 R = reflect(-V, N);
-    float3 F = FresnelSchlickRoughness(NdotV, F0, roughness);
-    float3 kS = F;
-    float3 kD = (1.0f - kS) * (1.0f - metallic);
-    float3 irradiance = irradianceMap.Sample(samplerState, N).rgb;
-    float3 diffuseIBL = kD * irradiance * albedo * max(IBLParams.y, 0.0f);
-    const float MAX_REFLECTION_LOD = 4.0f;
-    float3 prefilteredColor = prefilteredEnvMap.SampleLevel(samplerState, R, roughness * MAX_REFLECTION_LOD).rgb;
-    float2 envBRDF = brdfLUT.Sample(samplerState, float2(NdotV, roughness)).rg;
-    float3 specularIBL = prefilteredColor * (F * envBRDF.x + envBRDF.y);
-    specularIBL *= step(0.5f, IBLParams.x) * max(IBLParams.z, 0.0f);
-    return (diffuseIBL + specularIBL) * ao * ssao;
+    if (cascade == 0) return float3(1.0f, 0.15f, 0.15f);
+    if (cascade == 1) return float3(0.15f, 1.0f, 0.15f);
+    if (cascade == 2) return float3(0.15f, 0.35f, 1.0f);
+    return float3(1.0f, 1.0f, 0.15f);
+}
+
+int SelectGroundPlaneDebugSplit(float3 worldPos)
+{
+    float3 cameraToPoint = worldPos - CameraPositionLightCount.xyz;
+    float viewDepth = dot(cameraToPoint, normalize(CameraForward.xyz));
+
+    if (viewDepth < 0.0f)
+        return -1;
+
+    if (viewDepth <= CascadeSplits.x) return 0;
+    if (viewDepth <= CascadeSplits.y) return 1;
+    if (viewDepth <= CascadeSplits.z) return 2;
+    if (viewDepth <= CascadeSplits.w) return 3;
+    return -1;
 }
 
 float4 main(PS_INPUT input) : SV_Target0
@@ -285,14 +290,12 @@ float4 main(PS_INPUT input) : SV_Target0
     float2 uv = (input.Pos.xy + 0.5f) * ScreenSizeParams.zw;
     float depth = depthTexture.Load(int3(pixel, 0)).r;
     bool hasGeometry = depth < 0.999999f;
-    float mode = CurrentLightParams.x;
+    float lightMode = CurrentLightParams.x;
+    bool showCascadeSplits = CurrentLightParams.y > 0.5f;
+    int debugMode = (int)(CurrentLightParams.z + 0.5f);
 
     if (!hasGeometry)
-    {
-        if (mode > 0.5f)
-            discard;
-        return float4(0.0f, 0.0f, 0.0f, 1.0f);
-    }
+        discard;
 
     float4 albedoSample = gBufferAlbedo.Load(int3(pixel, 0));
     float4 materialSample = gBufferMaterial.Load(int3(pixel, 0));
@@ -304,12 +307,16 @@ float4 main(PS_INPUT input) : SV_Target0
     float roughness = max(saturate(materialSample.b), MIN_ROUGHNESS);
     float ao = saturate(materialSample.a);
     float3 N = normalize(normalSample.xyz * 2.0f - 1.0f);
+    bool isGround = normalSample.a > 0.5f;
     float3 worldPos = RestoreWorldPosition(uv, depth);
     float3 V = normalize(CameraPositionLightCount.xyz - worldPos);
     float3 F0 = lerp(materialSample.rrr, albedo, metallic);
 
-    if (mode > 0.5f)
+    if (lightMode > 0.5f)
     {
+        if (showCascadeSplits && isGround)
+            discard;
+
         float3 Lvec = CurrentLightPositionRange.xyz - worldPos;
         float distanceToLight = length(Lvec);
         float range = CurrentLightPositionRange.w;
@@ -326,8 +333,61 @@ float4 main(PS_INPUT input) : SV_Target0
     if (IBLParams.w > 0.5f)
         ssao = saturate(ssaoTexture.Load(int3(pixel, 0)).r);
 
-    float3 ambient = CalculateAmbient(albedo, metallic, roughness, ao, N, V, ssao);
+    float NdotV = saturate(dot(N, V));
+    float3 R = reflect(-V, N);
+    float3 F_ambient = FresnelSchlickRoughness(NdotV, F0, roughness);
+    float3 kS_ambient = F_ambient;
+    float3 kD_ambient = (1.0f - kS_ambient) * (1.0f - metallic);
+    float3 irradiance = irradianceMap.Sample(samplerState, N).rgb;
+    float3 diffuseIBL = kD_ambient * irradiance * albedo * max(IBLParams.y, 0.0f);
+
+    const float MAX_REFLECTION_LOD = 4.0f;
+    float3 prefilteredColor = prefilteredEnvMap.SampleLevel(samplerState, R, roughness * MAX_REFLECTION_LOD).rgb;
+    float2 envBRDF = brdfLUT.Sample(samplerState, float2(NdotV, roughness)).rg;
+    float3 specularIBL = prefilteredColor * (F_ambient * envBRDF.x + envBRDF.y);
+    specularIBL *= step(0.5f, IBLParams.x) * max(IBLParams.z, 0.0f);
+
+    float3 ambient = (diffuseIBL + specularIBL) * ao * ssao;
     float3 Ld = normalize(-DirectionalLight.xyz);
+    float3 H = normalize(V + Ld);
+
+    if (debugMode == 1)
+    {
+        float ndf = DistributionGGX(N, H, roughness);
+        return float4(saturate(ndf.xxx), 1.0f);
+    }
+
+    if (debugMode == 2)
+    {
+        float geometry = GeometrySmith(N, V, Ld, roughness);
+        return float4(saturate(geometry.xxx), 1.0f);
+    }
+
+    if (debugMode == 3)
+    {
+        float3 fresnel = FresnelSchlick(saturate(dot(H, V)), F0);
+        return float4(saturate(fresnel), 1.0f);
+    }
+
+    if (debugMode == 4)
+        return float4(saturate(diffuseIBL * ao), 1.0f);
+
+    if (debugMode == 5)
+        return float4(saturate(specularIBL * ao), 1.0f);
+
+    if (debugMode == 6)
+        return float4(saturate(ambient), 1.0f);
+
+    if (debugMode == 7)
+        return float4(saturate(prefilteredColor), 1.0f);
+
+    if (showCascadeSplits && isGround && (debugMode == 0 || debugMode == 15))
+    {
+        int split = SelectGroundPlaneDebugSplit(worldPos);
+        if (split >= 0)
+            return float4(GetCascadeDebugColor(split), 1.0f);
+    }
+
     float shadowFactor = CalculateDirectionalShadow(worldPos, N, Ld);
     float shadowStrength = saturate(ShadowLightDirStrength.w);
     float visibility = lerp(1.0f - shadowStrength, 1.0f, shadowFactor);

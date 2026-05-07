@@ -44,7 +44,7 @@ float4 main(PS_INPUT input) : SV_TARGET
 
     if (mode == 4)
     {
-        return float4(saturate(value.yzw), 1.0f);
+        return float4(saturate(value.b).xxx, 1.0f);
     }
 
     if (mode == 5)

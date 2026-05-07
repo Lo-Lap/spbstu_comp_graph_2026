@@ -266,21 +266,6 @@
     <CopyFileToFolders Include="SpecularPrefilter.ps">
       <Filter>shader</Filter>
     </CopyFileToFolders>
-    <CopyFileToFolders Include="models\penguin\penguin.bin">
-      <Filter>models\penguin</Filter>
-    </CopyFileToFolders>
-    <CopyFileToFolders Include="models\penguin\penguin.gltf">
-      <Filter>models\penguin</Filter>
-    </CopyFileToFolders>
-    <CopyFileToFolders Include="models\penguin\Penguin_Albedo.png">
-      <Filter>models\penguin</Filter>
-    </CopyFileToFolders>
-    <CopyFileToFolders Include="models\penguin\Penguin_Normal.png">
-      <Filter>models\penguin</Filter>
-    </CopyFileToFolders>
-    <CopyFileToFolders Include="models\penguin\Penguin_Roughness.png">
-      <Filter>models\penguin</Filter>
-    </CopyFileToFolders>
     <CopyFileToFolders Include="BloomExtract.ps">
       <Filter>shader</Filter>
     </CopyFileToFolders>
@@ -314,21 +299,6 @@
     <CopyFileToFolders Include="models\bunny\bunny2_scraf.jpg">
       <Filter>models\bunny</Filter>
     </CopyFileToFolders>
-    <CopyFileToFolders Include="models\cakepop\Cake_ Pop.bin">
-      <Filter>models\cakepop</Filter>
-    </CopyFileToFolders>
-    <CopyFileToFolders Include="models\cakepop\Cake_ Pop.gltf">
-      <Filter>models\cakepop</Filter>
-    </CopyFileToFolders>
-    <CopyFileToFolders Include="models\cakepop\Cake_Pop_ao-Cake_Pop_rough-Cake_Pop_metal.png">
-      <Filter>models\cakepop</Filter>
-    </CopyFileToFolders>
-    <CopyFileToFolders Include="models\cakepop\Cake_Pop_bcolor.png">
-      <Filter>models\cakepop</Filter>
-    </CopyFileToFolders>
-    <CopyFileToFolders Include="models\cakepop\Cake_Pop_norm.png">
-      <Filter>models\cakepop</Filter>
-    </CopyFileToFolders>
     <CopyFileToFolders Include="textures\rocky_terrain_02_diff_1k.dds">
       <Filter>textures</Filter>
     </CopyFileToFolders>
@@ -350,8 +320,50 @@
     <CopyFileToFolders Include="DebugTexture.ps">
       <Filter>shader</Filter>
     </CopyFileToFolders>
+    <CopyFileToFolders Include="models\cakepop\Cake_ Pop.bin">
+      <Filter>models\cakepop</Filter>
+    </CopyFileToFolders>
+    <CopyFileToFolders Include="models\cakepop\Cake_ Pop.gltf">
+      <Filter>models\cakepop</Filter>
+    </CopyFileToFolders>
+    <CopyFileToFolders Include="models\cakepop\Cake_Pop_bcolor.png">
+      <Filter>models\cakepop</Filter>
+    </CopyFileToFolders>
+    <CopyFileToFolders Include="models\cakepop\Cake_Pop_metal-Cake_Pop_rough.png">
+      <Filter>models\cakepop</Filter>
+    </CopyFileToFolders>
+    <CopyFileToFolders Include="models\cakepop\Cake_Pop_norm.png">
+      <Filter>models\cakepop</Filter>
+    </CopyFileToFolders>
     <CopyFileToFolders Include="DeferredLighting.ps">
       <Filter>shader</Filter>
+    </CopyFileToFolders>
+    <CopyFileToFolders Include="GBufferPixel.ps">
+      <Filter>shader</Filter>
+    </CopyFileToFolders>
+    <CopyFileToFolders Include="GBufferVertex.vs">
+      <Filter>shader</Filter>
+    </CopyFileToFolders>
+    <CopyFileToFolders Include="models\penguin\penguin.bin">
+      <Filter>models\penguin</Filter>
+    </CopyFileToFolders>
+    <CopyFileToFolders Include="models\penguin\penguin.blend">
+      <Filter>models\penguin</Filter>
+    </CopyFileToFolders>
+    <CopyFileToFolders Include="models\penguin\penguin.gltf">
+      <Filter>models\penguin</Filter>
+    </CopyFileToFolders>
+    <CopyFileToFolders Include="models\penguin\Penguin_Albedo.png">
+      <Filter>models\penguin</Filter>
+    </CopyFileToFolders>
+    <CopyFileToFolders Include="models\penguin\Penguin_Metalness-Penguin_Roughness.png">
+      <Filter>models\penguin</Filter>
+    </CopyFileToFolders>
+    <CopyFileToFolders Include="models\penguin\Penguin_Normal.png">
+      <Filter>models\penguin</Filter>
+    </CopyFileToFolders>
+    <CopyFileToFolders Include="models\penguin\Penguin_Roughness.png">
+      <Filter>models\penguin</Filter>
     </CopyFileToFolders>
   </ItemGroup>
   <ItemGroup>

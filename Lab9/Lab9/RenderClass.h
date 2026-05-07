@@ -713,11 +713,11 @@ private:
         DebugView_AmbientIBL = 6,
         DebugView_ReflectionOnly = 7,
         DebugView_SSAO = 8,
-        DebugView_NormalBuffer = 9,
-        DebugView_DepthBuffer = 10,
-        DebugView_GroundNormalMapMarkers = 11,
-        DebugView_GBufferAlbedo = 12,
-        DebugView_GBufferMaterial = 13,
+        DebugView_DepthBuffer = 9,
+        DebugView_GroundNormalMapMarkers = 10,
+        DebugView_GBufferColor = 11,
+        DebugView_GBufferRoughness = 12,
+        DebugView_GBufferNormals = 13,
         DebugView_GBufferEmissive = 14,
         DebugView_DeferredLighting = 15
     };
