@@ -1,0 +1,30 @@
+Texture2D baseColorTexture : register(t0);
+SamplerState samplerState : register(s0);
+
+cbuffer ShadowMaterialBuffer : register(b1)
+{
+	float4 AlphaParams;
+};
+struct PS_INPUT
+{
+	float4 Pos : SV_POSITION;
+	float2 TexCoord : TEXCOORD0;
+};
+
+void main(PS_INPUT input)
+{
+ if (AlphaParams.w < 0.5f)
+	return;
+
+ float alpha = AlphaParams.y;
+
+ if (AlphaParams.x > 0.5f)
+ {
+	alpha *= baseColorTexture.Sample(samplerState, input.TexCoord).a;
+ }
+
+ if (alpha < AlphaParams.z)
+ {
+	discard;
+ }
+}
